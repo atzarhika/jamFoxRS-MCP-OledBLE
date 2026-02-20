@@ -87,7 +87,7 @@ Fitur paling mutakhir dari V15.1 adalah **VOTOL Web Dashboard**. Anda bisa meman
 1. Nyalakan motor, tekan tahan tombol 5 detik untuk masuk ke menu Settings OLED.
 2. Geser ke opsi `BLE OUT`, lalu tekan tahan 3 detik untuk mengubahnya menjadi **ON**. Alat akan *Restart* untuk memuat modul Bluetooth.
 3. Di HP Android Anda, nyalakan **Bluetooth** dan **Lokasi (GPS)**. *(GPS diwajibkan oleh Google Chrome untuk memindai perangkat BLE)*.
-4. Buka file **`dashboard.html`** yang ada di repositori ini menggunakan aplikasi **Google Chrome** di HP Anda.
+4. Buka file **`dashboard.html`** yang ada di repositori ini menggunakan aplikasi **Google Chrome** di HP Anda. atau bisa menggunakan halaman https://atzarhika.github.io/jamFoxRS-MCP-OledBLE/
 5. Ketuk tombol **CONNECT** berwarna hijau di layar HP.
 6. Akan muncul *pop-up* izin Chrome dari bawah layar. Pilih perangkat bernama **"Votol_BLE"** lalu ketuk **Pasangkan / Pair**.
 7. Selamat! Layar HP Anda sekarang berubah menjadi kokpit digital *real-time*.
