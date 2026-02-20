@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>VOTOL Smart Dashboard Pro</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --panel-bg: #161b22;
+            --text-main: #c9d1d9;
+            --accent-cyan: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-orange: #d29922;
+            --accent-red: #f85149;
+            --accent-purple: #bc8cff;
+        }
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body {
+            background-color: var(--bg-color); color: var(--text-main);
+            margin: 0; padding: 15px; display: flex; flex-direction: column;
+            align-items: center; min-height: 100vh;
+        }
+        .header { width: 100%; max-width: 600px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .header h1 { margin: 0; font-size: 20px; color: var(--accent-cyan); }
+        button {
+            background-color: var(--accent-green); color: white; border: none;
+            padding: 10px 20px; border-radius: 6px; font-weight: bold; font-size: 16px;
+            cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: 0.2s;
+        }
+        button:active { transform: scale(0.95); }
+        button.disconnected { background-color: var(--accent-red); }
+        
+        .grid-container {
+            display: grid; width: 100%; max-width: 600px;
+            grid-template-columns: 1fr 1fr; gap: 15px;
+        }
+        
+        .panel { background-color: var(--panel-bg); padding: 20px; border-radius: 12px; text-align: center; border: 1px solid #30363d; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .panel.full { grid-column: span 2; }
+        
+        .label { font-size: 13px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+        .value { font-size: 32px; font-weight: bold; margin: 5px 0; }
+        .value.speed { font-size: 80px; color: white; line-height: 1; }
+        .unit { font-size: 16px; color: #8b949e; font-weight: normal; }
+        
+        .mode-badge {
+            display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: bold;
+            background-color: #238636; color: white; margin-top: 10px; font-size: 18px;
+        }
+        
+        .flex-row { display: flex; justify-content: space-around; width: 100%; margin-top: 10px; }
+        .flex-col { display: flex; flex-direction: column; align-items: center; }
+        .small-val { font-size: 20px; font-weight: bold; color: var(--accent-cyan); }
+        
+        /* Style Khusus BMS */
+        .cell-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .cell-box { background: #0d1117; padding: 8px 12px; border-radius: 6px; border: 1px solid #21262d; text-align: left;}
+        .cell-header { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; }
+        .cell-bar-bg { width: 100%; background: #30363d; height: 6px; border-radius: 3px; margin-top: 6px; overflow: hidden;}
+        .cell-bar-fill { height: 100%; background: var(--accent-green); transition: width 0.3s; }
+        .balancing { color: var(--accent-orange); }
+        .balancing-bar { background: var(--accent-orange); }
+
+        #log { margin-top: 20px; margin-bottom: 40px; font-size: 12px; color: #8b949e; max-width: 600px; width: 100%; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>⚡ VOTOL DASHBOARD</h1>
+        <button id="connectBtn" onclick="toggleConnection()">CONNECT</button>
+    </div>
+
+    <div class="grid-container">
+        <div class="panel full">
+            <div class="label">Speed</div>
+            <div class="value speed"><span id="speed">0</span> <span class="unit">KM/H</span></div>
+            <div class="mode-badge" id="mode">PARK</div>
+            <div style="margin-top: 10px; color: var(--accent-orange); font-weight: bold;">RPM: <span id="rpm">0</span></div>
+        </div>
+
+        <div class="panel full">
+            <div class="label">Battery Status</div>
+            <div class="flex-row">
+                <div class="flex-col">
+                    <span class="label">SOC</span>
+                    <span class="value" style="color: var(--accent-green);"><span id="soc">0</span><span class="unit">%</span></span>
+                </div>
+                <div class="flex-col">
+                    <span class="label">Voltage</span>
+                    <span class="value"><span id="volts">0.0</span><span class="unit">V</span></span>
+                </div>
+                <div class="flex-col">
+                    <span class="label">Current</span>
+                    <span class="value"><span id="amps">0.0</span><span class="unit">A</span></span>
+                </div>
+            </div>
+            <div style="margin-top: 15px; font-size: 24px; font-weight: bold; color: var(--accent-cyan);">
+                <span id="power">0</span> <span class="unit">WATT</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="label">Temperature</div>
+            <div class="flex-row">
+                <div class="flex-col"><span class="label">ECU</span><span class="small-val" id="t-ctrl">0°</span></div>
+                <div class="flex-col"><span class="label">MTR</span><span class="small-val" id="t-motor">0°</span></div>
+                <div class="flex-col"><span class="label">BAT</span><span class="small-val" id="t-batt">0°</span></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="label">Charging</div>
+            <div class="value" id="charge-status" style="font-size: 20px; color: #8b949e; margin-top:10px;">NOT CHARGING</div>
+            <div id="charge-details" style="display: none; margin-top: 10px;">
+                <span class="small-val" id="c-volt">0.0V</span> | <span class="small-val" style="color: var(--accent-green);" id="c-amp">0.0A</span>
+            </div>
+        </div>
+
+        <div class="panel full" id="bms-panel" style="display: none;">
+            <div class="label" style="color: var(--accent-purple);">BMS Diagnostics</div>
+            <div class="flex-row" style="margin-bottom: 20px;">
+                <div class="flex-col"><span class="label">Health (SOH)</span><span class="small-val" id="soh" style="color: var(--accent-green);">0%</span></div>
+                <div class="flex-col"><span class="label">Cycles</span><span class="small-val" id="cycles" style="color: var(--text-main);">0</span></div>
+                <div class="flex-col"><span class="label">Cell Delta</span><span class="small-val" id="delta" style="color: var(--accent-orange);">0mV</span></div>
+            </div>
+            
+            <div style="text-align: left; font-size: 14px; color: #8b949e; border-top: 1px solid #30363d; padding-top: 15px;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span>Individual Cells</span>
+                    <span id="avg-cell">Avg: 0.000V</span>
+                </div>
+                <div class="cell-grid" id="cells-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="log">Status: Disconnected</div>
+
+    <script>
+        const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+        const CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+        
+        let bluetoothDevice;
+        let bleCharacteristic;
+        let isConnected = false;
+        let rxBuffer = ""; 
+
+        const connectBtn = document.getElementById('connectBtn');
+        const logEl = document.getElementById('log');
+
+        async function toggleConnection() {
+            if (isConnected) disconnect();
+            else connect();
+        }
+
+        async function connect() {
+            try {
+                log("Meminta izin Bluetooth...");
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'Votol_BLE' }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+                log("Menyambungkan ke perangkat...");
+                const server = await bluetoothDevice.gatt.connect();
+
+                log("Mencari Service...");
+                const service = await server.getPrimaryService(SERVICE_UUID);
+
+                log("Mencari Karakteristik...");
+                bleCharacteristic = await service.getCharacteristic(CHAR_UUID);
+
+                log("Berlangganan Data (Notify)...");
+                await bleCharacteristic.startNotifications();
+                bleCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
+
+                isConnected = true;
+                connectBtn.innerText = "DISCONNECT";
+                connectBtn.className = "disconnected";
+                log("Terkoneksi & Menerima Data Real-Time!");
+
+            } catch (error) {
+                log("Gagal: " + error);
+            }
+        }
+
+        function disconnect() {
+            if (!bluetoothDevice) return;
+            log("Memutus koneksi...");
+            if (bluetoothDevice.gatt.connected) bluetoothDevice.gatt.disconnect();
+        }
+
+        function onDisconnected() {
+            isConnected = false;
+            connectBtn.innerText = "CONNECT";
+            connectBtn.className = "";
+            log("Koneksi terputus.");
+        }
+
+        function handleNotifications(event) {
+            let value = new TextDecoder().decode(event.target.value);
+            rxBuffer += value;
+
+            if (rxBuffer.includes('\n')) {
+                let lines = rxBuffer.split('\n');
+                rxBuffer = lines.pop(); 
+
+                for (let line of lines) {
+                    if (line.trim() !== "") {
+                        try {
+                            let data = JSON.parse(line);
+                            updateDashboard(data);
+                        } catch (e) {
+                            // Abaikan error parse jika ada serpihan data rusak
+                        }
+                    }
+                }
+            }
+        }
+
+        function updateDashboard(data) {
+            // Update Main Data
+            document.getElementById('speed').innerText = data.speed;
+            document.getElementById('rpm').innerText = data.rpm;
+            document.getElementById('volts').innerText = data.volts.toFixed(1);
+            document.getElementById('amps').innerText = data.amps.toFixed(1);
+            document.getElementById('power').innerText = data.power;
+            document.getElementById('soc').innerText = data.soc;
+            
+            // Update Temp
+            if(data.temps) {
+                document.getElementById('t-ctrl').innerText = data.temps.ctrl + "°";
+                document.getElementById('t-motor').innerText = data.temps.motor + "°";
+                document.getElementById('t-batt').innerText = data.temps.batt + "°";
+            }
+
+            // Update Mode
+            const modeEl = document.getElementById('mode');
+            modeEl.innerText = data.mode;
+            if (data.mode === "DRIVE" || data.mode === "SPORT") modeEl.style.backgroundColor = "#238636";
+            else if (data.mode === "REVERSE") modeEl.style.backgroundColor = "#d29922";
+            else if (data.mode === "BRAKE") modeEl.style.backgroundColor = "#f85149";
+            else modeEl.style.backgroundColor = "#8b949e";
+
+            // Update Charger
+            const chgStatus = document.getElementById('charge-status');
+            const chgDetails = document.getElementById('charge-details');
+            if (data.charger && data.charger.on === 1) {
+                chgStatus.innerText = data.charger.ori === 1 ? "ORI CHARGER" : "FAST CHARGER";
+                chgStatus.style.color = "var(--accent-cyan)";
+                chgDetails.style.display = "block";
+                document.getElementById('c-volt').innerText = data.charger.v.toFixed(1) + "V";
+                document.getElementById('c-amp').innerText = data.charger.a.toFixed(1) + "A";
+            } else {
+                chgStatus.innerText = "NOT CHARGING";
+                chgStatus.style.color = "#8b949e";
+                chgDetails.style.display = "none";
+            }
+
+            // --- UPDATE BMS PANEL ---
+            if(data.health && data.cells && data.balance) {
+                document.getElementById('bms-panel').style.display = 'block';
+                
+                // Health Stats
+                document.getElementById('soh').innerText = data.health.soh + "%";
+                document.getElementById('cycles').innerText = data.health.cycles;
+                document.getElementById('delta').innerText = data.cellDelta + "mV";
+                
+                if (data.cellVoltStats) {
+                    document.getElementById('avg-cell').innerText = "Avg: " + (data.cellVoltStats.avg / 1000).toFixed(3) + "V";
+                }
+
+                // Render Individual Cells
+                const cellsContainer = document.getElementById('cells-container');
+                let cellsHtml = '';
+                
+                for(let i = 0; i < data.cells.length; i++) {
+                    if(data.cells[i] === 0) continue; // Lewati sel kosong jika motornya bukan 23 seri
+                    
+                    let cellV = data.cells[i] / 1000; // Ubah mV jadi V
+                    let isBalancing = data.balance.cells[i] === 1;
+                    
+                    // Kalkulasi persentase bar (Asumsi baterai Li-ion/LiFePO4: 2.8V kosong, 4.2V penuh)
+                    // Jika baterai motor Anda LiFePO4 (3.2V - 3.65V), rumus ini bisa diubah
+                    let pct = Math.max(0, Math.min(100, ((cellV - 2.8) / (4.2 - 2.8)) * 100));
+                    
+                    let titleClass = isBalancing ? 'balancing' : '';
+                    let barClass = isBalancing ? 'balancing-bar' : '';
+                    let flashIcon = isBalancing ? ' ⚡' : '';
+
+                    cellsHtml += `
+                    <div class="cell-box">
+                        <div class="cell-header ${titleClass}">
+                            <span>C${i+1}${flashIcon}</span>
+                            <span>${cellV.toFixed(3)}V</span>
+                        </div>
+                        <div class="cell-bar-bg">
+                            <div class="cell-bar-fill ${barClass}" style="width: ${pct}%;"></div>
+                        </div>
+                    </div>`;
+                }
+                // Hanya update jika ada sel yang terdeteksi
+                if(cellsHtml !== '') {
+                    cellsContainer.innerHTML = cellsHtml;
+                }
+            }
+        }
+
+        function log(text) {
+            logEl.innerText = "Status: " + text;
+        }
+    </script>
+</body>
+</html>
