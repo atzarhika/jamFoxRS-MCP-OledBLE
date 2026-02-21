@@ -1,4 +1,4 @@
-# ⚡ DOKUMENTASI RESMI: VOTOL Smart Dashboard V15.1 Pro (BLE Edition)
+# ⚡ DOKUMENTASI RESMI: VOTOL Smart Dashboard POLYTRON FOX RS V15.1 Pro (BLE Edition)
 
 **Deskripsi Proyek:**
 VOTOL Smart Dashboard adalah instrumen kokpit tambahan berteknologi tinggi untuk motor listrik dengan *controller* VOTOL (khususnya Polytron Fox-R). Alat ini membaca data spesifik pabrikan (Suhu, RPM, Voltase, Arus, hingga Status Per-Cell Baterai BMS) langsung dari jalur CAN Bus menggunakan modul MCP2515.
@@ -130,8 +130,14 @@ Di kolom teks Serial Monitor, ketikkan perintah dengan format berikut (tanpa spa
 1. Tekan tombol **Enter** di keyboard Anda.
 2. Alat ESP32 Anda akan langsung merespons, menyimpan data tersebut, dan melakukan **Restart** otomatis.
 3. Cek di **Halaman 5 (System Info)** pada layar OLED untuk memastikan data sudah terganti.
-*(Catatan: Anda juga bisa mengganti tulisan Splash Screen dengan perintah: `SPLASH,NamaAnda` maksimal 10 huruf).*
 
+---
+## Anda juga bisa ***mengganti tulisan Splash Screen***
+
+dengan perintah: 
+`SPLASH,NamaAnda` maksimal 10 huruf).*
+
+---
 > ### ⚠️ PENTING: Khusus Pengguna ESP32-C3 Super Mini
 > ESP32-C3 Super Mini menggunakan jalur USB langsung (USB CDC) dari dalam chip-nya. Jika Serial Monitor kosong/tidak merespons, lakukan 2 perbaikan ini:
 > 
