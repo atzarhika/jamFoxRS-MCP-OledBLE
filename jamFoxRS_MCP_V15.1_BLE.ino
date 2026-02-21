@@ -13,7 +13,6 @@
 #include <Fonts/FreeSansBold9pt7b.h> 
 
 // ================= LIBRARY BLE BAWAAN RESMI ESP32 =================
-// (Sama persis seperti referensi Github Dual-Core Anda)
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -135,12 +134,23 @@ void handleBuzzer();
 void triggerBeep(int duration);
 void executeSettingAction();
 void initBLE();
+void showCenteredText(String text, int yPos); // Fungsi baru untuk centering
+
+// ================= FUNGSI UNTUK MENENGAHKAN TEKS =================
+void showCenteredText(String text, int yPos) {
+  int16_t x1, y1;
+  uint16_t w, h;
+  display.getTextBounds(text, 0, yPos, &x1, &y1, &w, &h); // Hitung lebar teks secara akurat
+  int xPos = (128 - w) / 2; // Kurangi lebar layar (128) dengan lebar teks, bagi 2
+  if (xPos < 0) xPos = 0; // Jaga-jaga teks kepanjangan
+  display.setCursor(xPos, yPos);
+  display.print(text);
+}
 
 // ================= SETUP =================
 void setup() {
   Serial.begin(115200);
 
-  // KUNCI UTAMA: Matikan WiFi agar RAM luas untuk Standard BLE
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
   
@@ -154,11 +164,10 @@ void setup() {
 
   preferences.begin("cfg", false);
 
-  // SAFE MODE
   if (digitalRead(BUTTON_PIN) == LOW) {
     preferences.putBool("ble", false); 
     display.clearDisplay(); display.setFont(); display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 10); display.print("SAFE MODE: BLE OFF");
+    showCenteredText("SAFE MODE: BLE OFF", 15);
     display.display();
     delay(2000);
   }
@@ -169,9 +178,13 @@ void setup() {
   soundEnabled = preferences.getBool("snd", true);
   bleEnabled = preferences.getBool("ble", false);
 
-  display.clearDisplay(); display.setFont(&FreeSansBold9pt7b); display.setTextColor(SSD1306_WHITE);
-  int xPos = (128 - (splashText.length() * 11)) / 2;
-  display.setCursor((xPos < 0) ? 0 : xPos, 22); display.print(splashText); display.display();
+  // --- TAMPILKAN SPLASH SCREEN DENGAN CENTER SEMPURNA ---
+  display.clearDisplay(); 
+  display.setFont(&FreeSansBold9pt7b); 
+  display.setTextColor(SSD1306_WHITE);
+  showCenteredText(splashText, 22); 
+  display.display();
+  // ------------------------------------------------------
 
   rtc.begin(); 
   
@@ -180,9 +193,8 @@ void setup() {
     CAN0.setMode(MCP_NORMAL); triggerBeep(200); 
   }
 
-  delay(1000); // Splash screen nampang sebentar
+  delay(1000); 
 
-  // Jalankan BLE Resmi jika aktif
   if (bleEnabled) {
       initBLE();
   }
@@ -191,7 +203,6 @@ void setup() {
 void initBLE() {
   if (pServer != nullptr) return; 
   
-  // Persis seperti referensi komunitas:
   BLEDevice::init("Votol_BLE");
   
   pServer = BLEDevice::createServer();
@@ -203,7 +214,6 @@ void initBLE() {
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
   );
   
-  // Wajib ditambahkan untuk library bawaan agar notify bekerja
   pCharacteristic->addDescriptor(new BLE2902());
   
   pService->start();
@@ -450,12 +460,13 @@ void executeSettingAction() {
   } else if (settingsCursor == 1) {
     bleEnabled = !bleEnabled; preferences.putBool("ble", bleEnabled);
     display.clearDisplay(); display.setFont(); display.setTextSize(1);
-    display.setCursor(20, 10); display.print("REBOOTING..."); display.display();
+    showCenteredText("REBOOTING...", 15);
+    display.display();
     delay(1500); ESP.restart(); 
   } else if (settingsCursor == 2) {
     if (bleEnabled) {
         display.clearDisplay(); display.setFont(); display.setTextSize(1);
-        display.setCursor(0, 10); display.print("TURN OFF BLE FIRST!");
+        showCenteredText("TURN OFF BLE FIRST!", 15);
         display.display(); delay(2500);
     } else {
         performNtpSync(false); inSettingsMode = false;
@@ -502,8 +513,7 @@ void updateOLED() {
   if (showModePopup) {
     if (millis() - lastModeChange < 3000) { 
       display.setFont(&FreeSansBold9pt7b);
-      int xPos = (128 - (currentMode.length() * 11)) / 2;
-      display.setCursor((xPos < 0) ? 0 : xPos, 22); display.print(currentMode);
+      showCenteredText(currentMode, 22); // Gunakan fungsi center yang baru
       display.display(); return;
     } else { showModePopup = false; currentPage = 1; }
   }
@@ -589,9 +599,26 @@ void loop() {
   } else if (isBtnPressed) {
     unsigned long duration = now - btnPressTime;
     if (inSettingsMode) {
-      if (duration >= 3000 && !handled3s) { handled3s = true; triggerBeep(100); executeSettingAction(); }
+      if (duration >= 3000 && !handled3s) { 
+          handled3s = true; 
+          triggerBeep(100); 
+          executeSettingAction(); 
+      }
     } else {
-      if (duration >= 5000 && !handled5s) { handled5s = true; inSettingsMode = true; settingsCursor = 0; triggerBeep(300); }
+      if (duration >= 5000 && !handled5s) { 
+          handled5s = true; 
+          handled3s = true; 
+          
+          inSettingsMode = true; 
+          settingsCursor = 0; 
+          
+          digitalWrite(BUZZER_PIN, HIGH); delay(80);
+          digitalWrite(BUZZER_PIN, LOW);  delay(80);
+          digitalWrite(BUZZER_PIN, HIGH); delay(80);
+          digitalWrite(BUZZER_PIN, LOW);
+          
+          btnPressTime += 240; 
+      }
     }
   }
   lastBtnState = btnState;
