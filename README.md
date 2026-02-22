@@ -6,7 +6,7 @@ VOTOL Smart Dashboard adalah instrumen kokpit tambahan berteknologi tinggi untuk
 Pada versi **V15.1 (Pro Edition)** ini, alat telah dilengkapi dengan **Bluetooth Low Energy (BLE) Live Streaming** yang memungkinkan data motor ditampilkan secara *real-time* ke layar HP Anda melalui Web Dashboard, tanpa memerlukan aplikasi tambahan atau server khusus.
 
 **Fitur unggulan lainnya meliputi:**
-* Modul RTC (DS3231) untuk jam *offline* super akurat.
+* Modul RTC (DS3231) untuk jam *offline* super akurat. Syncron melalui WiFi (Tethreing HP) dengan ssid dan pass customable.
 * **Early Warning System (Buzzer):** Alarm kecepatan tinggi dan indikator gigi mundur.
 * Perlindungan logika *Anti-Regen* agar pengereman regeneratif tidak disalahartikan sebagai pengecasan.
 * **Sistem Menu On-Device:** Pengaturan alat (Sound, BLE, NTP) langsung dari tombol fisik layar.
