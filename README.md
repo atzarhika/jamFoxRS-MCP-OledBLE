@@ -75,7 +75,9 @@ Di dalam mode *Settings*, tekan pendek untuk menggeser kursor (`>`), tekan tahan
 * **Auto-Sleep:** Layar Info (Suhu, Watt) akan kembali otomatis ke Halaman Jam jika tidak ada penekanan tombol selama 30 detik.
 * **Pop-up Mode:** Muncul teks layar penuh selama 3 detik saat memindahkan gigi (PARK, DRIVE, SPORT, REVERSE).
 * **High-Speed Override:** Jika dipacu di atas **70 km/h**, angka kecepatan akan mendominasi layar secara otomatis demi keselamatan.
+* **Early Warning System** Jika dipacu di atas **85 km/h** maka buzzer akan berbunyi, buzzer juga akan berbunyi saat tombol mudur/reverse ditekan (Pengaturan Sound bisa disilent di Pengaturan).
 * **Smart Charging Display:** Saat dicolok *charger* (Ori / Fast Charger), layar bergantian menampilkan Ampere Masuk dan Persentase SOC. Kebal terhadap arus *Regen Braking*.
+* **BLE Stream** Saat mode ini di aktifkan maka sistem akan otomatis fokus melayani ble mode saja, layar yang ditampilkan hanya layar Jam, layar mode, speed override, dan settings saja. ini berguna agar sistem bt tidak crash dengan antena wifi dan menghemat penggunaan ram saat render informasi dari mcp.
 
 ---
 
