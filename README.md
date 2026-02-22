@@ -7,7 +7,6 @@ Pada versi **V15.1 (Pro Edition)** ini, alat telah dilengkapi dengan **Bluetooth
 
 **Fitur unggulan lainnya meliputi:**
 * Modul RTC (DS3231) untuk jam *offline* super akurat.
-* Fitur *auto-sync* waktu via WiFi (NTP) sesuai permintaan.
 * **Early Warning System (Buzzer):** Alarm kecepatan tinggi dan indikator gigi mundur.
 * Perlindungan logika *Anti-Regen* agar pengereman regeneratif tidak disalahartikan sebagai pengecasan.
 * **Sistem Menu On-Device:** Pengaturan alat (Sound, BLE, NTP) langsung dari tombol fisik layar.
@@ -40,7 +39,7 @@ Pemasangan pin dioptimalkan untuk ESP32-C3 Super Mini sebagai berikut:
 | --- | --- | --- | --- |
 | **OLED & RTC** | **SDA** | **GPIO 8** | Digabung (Paralel) untuk layar OLED & RTC DS3231. |
 | *(Jalur I2C)* | **SCL** | **GPIO 9** | Digabung (Paralel) untuk layar OLED & RTC DS3231. |
-| | VCC | 3.3V | Tegangan operasi I2C. |
+| | VCC | 5V | Tegangan operasi Modul RTC dan Oled. |
 | | GND | GND | Gabung ke Ground utama ESP32. |
 | **MCP2515** | **CS** | **GPIO 7** | Jalur Chip Select SPI. |
 | *(Jalur SPI)* | **SI / MOSI** | **GPIO 6** | Jalur Data Masuk (SPI). |
