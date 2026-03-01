@@ -149,3 +149,14 @@ dengan perintah:
 > 
 > **2. Setting Teks Serial Monitor:**
 > * Buka Serial Monitor, di sebelah opsi baudrate, ubah opsi *No line ending* menjadi **Newline** (atau *Both NL & CR*). Jika tidak diset ke Newline, ESP32 tidak akan tahu kalau Anda sudah menekan tombol Enter.
+
+
+---
+### DISCLAIMER!
+Kami **TIDAK** bertanggung jawab atas segala kerusakan, malfungsi, atau cedera yang mungkin terjadi pada kendaraan, controller, baterai, atau komponen lainnya.
+
+### BIG THANKS TO
+- @zexry619 (https://github.com/zexry619)
+- @yudhaime (https://github.com/yudhaime)
+
+---
