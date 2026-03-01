@@ -5,8 +5,18 @@ VOTOL Smart Dashboard adalah instrumen kokpit tambahan berteknologi tinggi untuk
 
 Pada versi **V15.1 (Pro Edition)** ini, alat telah dilengkapi dengan **Bluetooth Low Energy (BLE) Live Streaming** yang memungkinkan data motor ditampilkan secara *real-time* ke layar HP Anda melalui Web Dashboard, tanpa memerlukan aplikasi tambahan atau server khusus.
 
+---
+**⭐ Fitur Pintar Otomatis (Smart Overlays):**
+* **Auto-Sleep:** Layar Info (Suhu, Watt) akan kembali otomatis ke Halaman Jam jika tidak ada penekanan tombol selama 30 detik.
+* **Pop-up Mode:** Muncul teks layar penuh selama 3 detik saat memindahkan gigi (PARK, DRIVE, SPORT, REVERSE).
+* **High-Speed Override:** Jika dipacu di atas **70 km/h**, angka kecepatan akan mendominasi layar secara otomatis demi keselamatan.
+* **Early Warning System** Jika dipacu di atas **85 km/h** maka buzzer akan berbunyi, buzzer juga akan berbunyi saat tombol mudur/reverse ditekan (Pengaturan Sound bisa disilent di Pengaturan).
+* **Smart Charging Display:** Saat dicolok *charger* (Ori / Fast Charger), layar bergantian menampilkan Ampere Masuk dan Persentase SOC. Kebal terhadap arus *Regen Braking*.
+* **BLE Stream** Saat mode ini di aktifkan maka sistem akan otomatis fokus melayani ble mode saja, layar yang ditampilkan hanya layar Jam, layar mode, speed override, dan settings saja. ini berguna agar sistem bt tidak crash dengan antena wifi dan menghemat penggunaan ram saat render informasi dari mcp.
+* **Trip meter, Konsumsi daya Wh/km, & Range estimasi** Menambahkan informasi tentang perhitungan Trip Meter, Konsumsi Daya (Wh/km), Estimasi Jarak Tempuh (Range), dan komunikasi BLE 2 Arah (RX/TX).
+
 **Fitur unggulan lainnya meliputi:**
-* Modul RTC (DS3231) untuk jam *offline* super akurat. Syncron melalui WiFi (Tethreing HP) dengan ssid dan pass customable.
+* Modul RTC (DS3231) untuk jam *offline* super akurat. Syncron jam melalui BLE di web.
 * **Early Warning System (Buzzer):** Alarm kecepatan tinggi dan indikator gigi mundur.
 * Perlindungan logika *Anti-Regen* agar pengereman regeneratif tidak disalahartikan sebagai pengecasan.
 * **Sistem Menu On-Device:** Pengaturan alat (Sound, BLE, NTP) langsung dari tombol fisik layar.
@@ -59,24 +69,24 @@ Pemasangan pin dioptimalkan untuk ESP32-C3 Super Mini sebagai berikut:
 
 ## 📱 3. Antarmuka Layar (UI) & Navigasi Pintar
 
-Perangkat ini didesain agar informatif namun tidak memecah konsentrasi pengendara.
-
-* **Tekan Pendek (< 3 detik):** Mengganti halaman (Halaman Jam, Suhu, BMS Data, Power, System Info).
+Perangkat didesain agar informatif namun tidak memecah konsentrasi.
+* **Tekan Pendek (< 3 detik):** Mengganti halaman ke kanan.
 * **Tekan Panjang (5 detik):** Masuk ke **MENU SETTINGS**.
+
+### 📄 Daftar Halaman Utama
+1. **Halaman 1 (Jam Utama):** Menampilkan jam besar, hari, dan tanggal.
+2. **Halaman 2 (Suhu):** Suhu ECU, Motor BLDC, dan Baterai.
+3. **Halaman 3 (BMS Data):** Tegangan aktual (V) dan Arus (A).
+4. **Halaman 4 (Power):** Konsumsi daya instan dalam satuan WATT raksasa.
+5. **Halaman 5 (System):** Info WiFi, Password, dan Versi Firmware.
+6. **Halaman 6 (Trip & Range) 🌟 BARU:** Menampilkan Jarak Tempuh (KM), Rata-rata efisiensi (Wh/km), dan Estimasi sisa jarak yang bisa ditempuh baterai.
+   * *Cara Reset:* Buka Halaman 6, lalu **Tekan dan Tahan Tombol selama 3 detik** untuk mereset Trip Meter ke angka 0.
 
 ### ⚙️ Menu Settings (On-Device)
 Di dalam mode *Settings*, tekan pendek untuk menggeser kursor (`>`), tekan tahan 3 detik untuk mengeksekusi pilihan:
-1. **SOUND (ON/OFF):** Menyalakan/mematikan fitur Buzzer (Alarm kecepatan >85km/h, gigi mundur, dan *feedback* tombol).
-2. **BLE OUT (ON/OFF):** Menyalakan pemancar Bluetooth. *(Catatan: Saat BLE ON, navigasi halaman OLED akan dikunci di Halaman Jam untuk membebaskan 100% memori prosesor agar streaming Bluetooth ke HP tidak lag).*
-3. **SYNC NTP:** Menyinkronkan jam alat menggunakan jaringan WiFi (Tethering HP).
-
-**⭐ Fitur Pintar Otomatis (Smart Overlays):**
-* **Auto-Sleep:** Layar Info (Suhu, Watt) akan kembali otomatis ke Halaman Jam jika tidak ada penekanan tombol selama 30 detik.
-* **Pop-up Mode:** Muncul teks layar penuh selama 3 detik saat memindahkan gigi (PARK, DRIVE, SPORT, REVERSE).
-* **High-Speed Override:** Jika dipacu di atas **70 km/h**, angka kecepatan akan mendominasi layar secara otomatis demi keselamatan.
-* **Early Warning System** Jika dipacu di atas **85 km/h** maka buzzer akan berbunyi, buzzer juga akan berbunyi saat tombol mudur/reverse ditekan (Pengaturan Sound bisa disilent di Pengaturan).
-* **Smart Charging Display:** Saat dicolok *charger* (Ori / Fast Charger), layar bergantian menampilkan Ampere Masuk dan Persentase SOC. Kebal terhadap arus *Regen Braking*.
-* **BLE Stream** Saat mode ini di aktifkan maka sistem akan otomatis fokus melayani ble mode saja, layar yang ditampilkan hanya layar Jam, layar mode, speed override, dan settings saja. ini berguna agar sistem bt tidak crash dengan antena wifi dan menghemat penggunaan ram saat render informasi dari mcp.
+1. **SOUND (ON/OFF):** Mengatur suara Buzzer.
+2. **BLE OUT (ON/OFF):** Menyalakan pemancar Bluetooth. *(Catatan: Saat BLE ON, navigasi halaman OLED akan dikunci demi membebaskan 100% memori untuk streaming).*
+3. **SYNC NTP:** Sinkronisasi jam menggunakan *tethering* WiFi (opsional, karena sekarang bisa via Bluetooth).
 
 ---
 
@@ -93,6 +103,10 @@ Fitur paling mutakhir dari V15.1 adalah **VOTOL Web Dashboard**. Anda bisa meman
 6. Akan muncul *pop-up* izin Chrome dari bawah layar. Pilih perangkat bernama **"Votol_BLE"** lalu ketuk **Pasangkan / Pair**.
 7. Selamat! Layar HP Anda sekarang berubah menjadi kokpit digital *real-time*.
 
+**🌟 Fitur Remote Settings (Baru):**
+Setelah HP terkoneksi, gulir ke bagian paling bawah layar *Dashboard*. Anda akan menemukan panel "Device Settings":
+* **Update Name:** Ketik teks maksimal 10 huruf, lalu klik tombol untuk mengganti layar *Splash Screen* motor secara instan!
+* **Sinkronisasi Jam Alat ke HP:** Klik tombol ini, dan jam di spidometer motor akan otomatis menyamakan dirinya dengan jam di HP Anda detik itu juga!
 ---
 
 ## 🔧 5. Pemecahan Masalah Umum (Troubleshooting)
