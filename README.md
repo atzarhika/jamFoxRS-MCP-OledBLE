@@ -152,7 +152,7 @@ dengan perintah:
 
 
 ---
-### DISCLAIMER!
+### ⚠️ DISCLAIMER!
 Kami **TIDAK** bertanggung jawab atas segala kerusakan, malfungsi, atau cedera yang mungkin terjadi pada kendaraan, controller, baterai, atau komponen lainnya.
 
 ### BIG THANKS TO
