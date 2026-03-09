@@ -20,7 +20,7 @@ async function loadPage(pageName, element) {
 
         if(pageName === 'battery') generateCells();
         
-    } catch (error) { console.error('Error:', error); }
+    } catch (error) { console.error('Gagal memuat halaman:', error); }
 }
 
 window.addEventListener('DOMContentLoaded', () => loadPage('dash'));
@@ -71,13 +71,25 @@ async function toggleConnect() {
 function updateUI(data) {
     if (!isConnected) return;
     
-    // GAUGE & DASH (Aman: Cek Elemen ada atau tidak)
+    // 1. GAUGE & DASH CORE
     const speedEl = document.getElementById('speed');
     if (speedEl) speedEl.innerText = data.speed || 0;
 
     const rpm = data.rpm || 0;
     const rpmValEl = document.getElementById('rpm-val');
     if (rpmValEl) rpmValEl.innerText = rpm;
+
+    // UPDATE MODE BERKENDARA & WARNA BADGE (Sinkron V15.8)
+    const modeEl = document.getElementById('mode-text');
+    if (modeEl && data.mode) {
+        modeEl.innerText = data.mode;
+        const mode = data.mode.toUpperCase();
+        if (mode === "SPORT") modeEl.style.backgroundColor = "#d29922";
+        else if (mode === "DRIVE") modeEl.style.backgroundColor = "#238636";
+        else if (mode === "REVERSE") modeEl.style.backgroundColor = "#bc8cff";
+        else if (mode === "PARK") modeEl.style.backgroundColor = "#30363d";
+        else modeEl.style.backgroundColor = "#f85149";
+    }
 
     const circle = document.getElementById('gauge-circle');
     const ball = document.getElementById('glow-ball');
@@ -94,9 +106,9 @@ function updateUI(data) {
         }
     }
 
-    // UPDATE DATA (Global IDs)
+    // 2. DATA TRIP, BATTERY, & TEMPS (GLOBAL IDs)
     const ids = {
-        'range-val': data.trip?.range + " km",
+        'range-val': (data.trip?.range || 0) + " km",
         'trip-val': (data.trip?.km || 0).toFixed(1) + " km",
         'soc-dash': (data.soc || 0) + "%",
         'soc-batt': (data.soc || 0) + "%",
@@ -116,10 +128,11 @@ function updateUI(data) {
         const el = document.getElementById(id);
         if (el) el.innerText = val;
     }
+    
     const bar = document.getElementById('soc-bar');
     if (bar) bar.style.width = (data.soc || 0) + "%";
 
-    // CELLS (V15.8)
+    // 3. CELLS UPDATE
     if (data.cells) {
         data.cells.forEach((mv, i) => {
             const el = document.getElementById(`c${i+1}-v`);
@@ -159,5 +172,6 @@ function setStatus(status) {
 function onDisconnected() { setStatus(false); }
 
 setInterval(() => {
-    document.getElementById('clock').innerText = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    const clock = document.getElementById('clock');
+    if (clock) clock.innerText = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 }, 1000);
