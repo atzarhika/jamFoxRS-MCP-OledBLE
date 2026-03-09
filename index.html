@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="id">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Votol Dash Pro v1.1</title>
+    <title>Votol Dash Pro</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
@@ -11,91 +11,64 @@
 
     <header class="top-header">
         <div class="status-bar">
-            <span id="conn-status" class="status-offline">● OFFLINE</span>
-            <span id="clock">00:00</span>
+            <span id="conn-status">● OFFLINE</span> <span id="clock">00:00</span>
         </div>
         <button id="connectBtn" onclick="toggleConnect()">CONNECT</button>
     </header>
 
-    <main id="content">
+    <main>
         <section id="dash" class="page active">
-            <div class="card main-speed">
-                <div class="speed-circle" id="speed-circle">
+            <div class="main-speed">
+                <div class="speed-circle" id="gauge-circle">
+                    <div class="glow-ball" id="glow-ball"></div>
                     <h2 id="speed">0</h2>
-                    <p class="unit">KM/H</p>
-                    <div class="rpm-display"><b id="rpm">0</b></div>
+                    <span class="label">KM/H</span>
+                    <div class="rpm-display" id="rpm-val">0</div>
                 </div>
-                <div class="mode-badge" id="mode">PARKING</div>
+                <div class="mode-badge" id="mode-text">PARKING</div>
             </div>
 
             <div class="info-grid-3">
-                <div class="card mini"><i data-lucide="map-pin" class="icon-purple"></i><span class="label">RANGE</span><b id="range">0 <small>km</small></b></div>
-                <div class="card mini"><i data-lucide="milestone" class="icon-green"></i><span class="label">TRIP</span><b id="trip">0.0 <small>km</small></b></div>
-                <div class="card mini"><i data-lucide="battery" class="icon-cyan"></i><span class="label">SOC</span><b id="soc-main">0%</b></div>
-            </div>
-
-            <div class="card">
-                <div class="temp-grid-3">
-                    <div class="temp-item"><span class="sub-label">ECU</span><b id="t-ecu">0°</b></div>
-                    <div class="temp-item"><span class="sub-label">MTR</span><b id="t-motor">0°</b></div>
-                    <div class="temp-item"><span class="sub-label">BAT</span><b id="t-batt">0°</b></div>
+                <div class="card mini"><i data-lucide="map-pin"></i><span class="label">RANGE</span><b>0 km</b></div>
+                <div class="card mini"><i data-lucide="milestone"></i><span class="label">TRIP</span><b>0.0 km</b></div>
+                <div class="card mini"><i data-lucide="battery"></i><span class="label">SOC</span><b id="soc-dash">0%</b></div>
+                
+                <div class="card full-width" style="grid-column: span 3;">
+                    <div class="temp-grid-3">
+                        <div class="temp-item"><span class="label">ECU</span><b id="t-ecu">0°</b></div>
+                        <div class="temp-item"><span class="label">MTR</span><b id="t-motor">0°</b></div>
+                        <div class="temp-item"><span class="label">BAT</span><b id="t-batt">0°</b></div>
+                    </div>
                 </div>
             </div>
         </section>
 
         <section id="battery" class="page">
             <div class="card">
-                <div class="label">Battery Energy (SOC)</div>
-                <div class="soc-bar-container"><div id="soc-fill" class="soc-fill"></div></div>
+                <span class="label">BATTERY ENERGY (SOC)</span>
+                <div class="soc-bar-container"><div id="soc-bar" class="soc-fill"></div></div>
+                
                 <div class="battery-stats-5col">
-                    <div><small>SOC</small><b id="soc-batt">0%</b></div>
-                    <div><small>BH</small><b id="soh">0%</b></div>
-                    <div><small>Volt</small><b id="volts">0.0V</b></div>
-                    <div><small>Amp</small><b id="amps">0.0A</b></div>
-                    <div><small>Watt</small><b id="watts">0W</b></div>
+                    <div class="stat-item"><small>SOC</small><b id="soc-batt">0%</b></div>
+                    <div class="stat-item"><small>BH</small><b id="soh-val">0%</b></div>
+                    <div class="stat-item"><small>VOLT</small><b id="v-val">0.0V</b></div>
+                    <div class="stat-item"><small>AMP</small><b id="a-val">0.0A</b></div>
+                    <div class="stat-item"><small>WATT</small><b id="w-val">0W</b></div>
                 </div>
             </div>
             <div id="cell-grid" class="cell-grid"></div>
         </section>
 
-        <section id="trip-page" class="page">
-            <div class="card">
-                <div class="label">Current Trip Info</div>
-                <div class="battery-stats-5col" style="grid-template-columns: repeat(3, 1fr); margin-top: 20px;">
-                    <div><small>Distance</small><br><b id="trip-dist">0.0 km</b></div>
-                    <div><small>Avg Wh/km</small><br><b id="avg-wh">0.0</b></div>
-                    <div><small>Power Use</small><br><b id="power-use">0W</b></div>
-                </div>
-            </div>
-        </section>
-
-        <section id="logs" class="page">
-            <div class="card console-card">
-                <div class="label" style="color: var(--cyan);">CAN JSON Stream</div>
-                <pre id="log-box">Waiting for data...</pre>
-            </div>
-        </section>
-
-        <section id="settings" class="page">
-            <div class="card">
-                <div class="label">Splashscreen Setting</div>
-                <div style="display: flex; gap: 8px; margin-top: 10px;">
-                    <input type="text" id="splashInput" placeholder="Max 10 Char">
-                    <button style="background: var(--cyan); border: none; padding: 0 15px; border-radius: 8px; font-weight: bold; color: white; cursor: pointer;" onclick="sendSplash()">SET</button>
-                </div>
-            </div>
-            <div class="card">
-                <div class="label">System Sync</div>
-                <button style="width: 100%; background: var(--purple); border: none; padding: 12px; border-radius: 8px; font-weight: bold; color: white; margin-top: 10px; cursor: pointer;" onclick="syncTime()">SYNC TIME</button>
-            </div>
-        </section>
+        <section id="trip-page" class="page"></section>
+        <section id="logs" class="page"></section>
+        <section id="settings" class="page"></section>
     </main>
 
     <nav class="bottom-nav">
         <div class="nav-item active" onclick="nav('dash')"><i data-lucide="gauge"></i></div>
         <div class="nav-item" onclick="nav('battery')"><i data-lucide="battery-charging"></i></div>
-        <div class="nav-item" onclick="nav('trip-page')"><i data-lucide="route"></i></div>
-        <div class="nav-item" onclick="nav('logs')"><i data-lucide="scroll-text"></i></div>
+        <div class="nav-item" onclick="nav('route')"><i data-lucide="route"></i></div>
+        <div class="nav-item" onclick="nav('scroll-text')"><i data-lucide="scroll-text"></i></div>
         <div class="nav-item" onclick="nav('settings')"><i data-lucide="settings"></i></div>
     </nav>
 
