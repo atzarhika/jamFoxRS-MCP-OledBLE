@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -16,7 +16,7 @@
         <button id="connectBtn" onclick="toggleConnect()">CONNECT</button>
     </header>
 
-    <main>
+    <main id="main-content">
         <section id="dash" class="page active">
             <div class="main-speed">
                 <div class="speed-circle" id="gauge-circle">
@@ -33,8 +33,8 @@
                 <div class="card mini"><i data-lucide="milestone"></i><span class="label">TRIP</span><b id="trip-val">0.0 km</b></div>
                 <div class="card mini"><i data-lucide="battery"></i><span class="label">SOC</span><b id="soc-dash">0%</b></div>
                 
-                <div class="card full-width" style="grid-column: span 3;">
-                    <div class="stats-row">
+                <div class="card" style="grid-column: span 3;">
+                    <div class="stats-row-5">
                         <div class="stat-item"><small>ECU</small><b id="t-ecu">0°</b></div>
                         <div class="stat-item"><small>MOTOR</small><b id="t-motor">0°</b></div>
                         <div class="stat-item"><small>BATT</small><b id="t-batt">0°</b></div>
@@ -47,7 +47,7 @@
             <div class="card">
                 <span class="label">BATTERY ENERGY (SOC)</span>
                 <div class="soc-bar-container"><div id="soc-bar" class="soc-fill"></div></div>
-                <div class="stats-row">
+                <div class="stats-row-5">
                     <div class="stat-item"><small>SOC</small><b id="soc-batt">0%</b></div>
                     <div class="stat-item"><small>BH</small><b id="soh-val">0%</b></div>
                     <div class="stat-item"><small>VOLT</small><b id="v-val">0.0V</b></div>
@@ -61,10 +61,10 @@
         <section id="trip-page" class="page">
             <div class="card">
                 <span class="label">TRIP ANALYTICS</span>
-                <div class="stats-row" style="margin-top: 15px;">
-                    <div class="stat-item"><small>Distance</small><b id="trip-dist-large">0.0 km</b></div>
-                    <div class="stat-item"><small>Avg Wh/km</small><b id="avg-wh">0.0</b></div>
-                    <div class="stat-item"><small>Power</small><b id="power-use">0W</b></div>
+                <div class="stats-row-5" style="margin-top: 15px;">
+                    <div class="stat-item"><small>DISTANCE</small><b id="trip-dist-large">0.0 km</b></div>
+                    <div class="stat-item"><small>AVG WH/KM</small><b id="avg-wh">0.0</b></div>
+                    <div class="stat-item"><small>CURRENT</small><b id="power-use">0W</b></div>
                 </div>
             </div>
         </section>

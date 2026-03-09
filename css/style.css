@@ -5,27 +5,23 @@
     --text-dim: #8b949e;
     --cyan: #58a6ff;
     --green: #3fb950;
-    --orange: #d29922;
 }
 
 body { background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; margin: 0; overflow: hidden; }
 .top-header { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
 #connectBtn { background: var(--cyan); border: none; color: white; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
 
-/* Dashboard Gauge Smooth Animation */
+/* Gauge RPM Smooth & Glow Ball */
 .main-speed { text-align: center; padding: 20px 0; }
 .speed-circle {
     width: 200px; height: 200px; border-radius: 50%; margin: 0 auto;
     display: flex; flex-direction: column; justify-content: center; align-items: center;
-    /* Gunakan variabel --deg agar bisa di-transition oleh CSS */
     background: radial-gradient(var(--card-bg) 64%, transparent 66%), 
                 conic-gradient(from 180deg, var(--cyan) var(--deg, 0deg), #21262d 0deg);
     position: relative;
-    /* Transisi 0.3 detik agar pergerakan jarum/warna sangat halus */
-    transition: --deg 0.3s ease-out; 
+    transition: --deg 0.3s ease-out; /* Animasi gauge halus */
 }
 
-/* Bola cahaya di ujung gauge */
 .glow-ball {
     position: absolute; width: 12px; height: 12px;
     background: #fff; border-radius: 50%;
@@ -36,24 +32,41 @@ body { background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif;
 }
 
 .speed-circle h2 { font-size: 85px; margin: 0; }
-.mode-badge { display: inline-block; background: #238636; padding: 5px 20px; border-radius: 20px; margin-top: 15px; font-weight: bold; text-transform: uppercase; }
 
-/* Info Grid & Card */
+/* Grid Info Dash */
 .info-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 10px; }
-.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
 .mini { display: flex; flex-direction: column; align-items: center; text-align: center; }
 .label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; }
 
-/* Battery & Trip Stats */
-.stats-row { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 5px; }
+/* Layout 5 Kolom Horizontal Baterai */
+.stats-row-5 { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    margin-top: 10px;
+    gap: 4px;
+}
 .stat-item { flex: 1; text-align: center; }
-.stat-item small { display: block; font-size: 9px; color: var(--text-dim); }
-.stat-item b { font-size: 12px; color: #fff; }
+.stat-item small { display: block; font-size: 8px; color: var(--text-dim); }
+.stat-item b { font-size: 11px; color: #fff; white-space: nowrap; }
 
 .soc-bar-container { background: #21262d; height: 10px; border-radius: 5px; margin-bottom: 10px; overflow: hidden; }
 .soc-fill { height: 100%; background: var(--green); width: 0%; transition: 0.5s; }
 
-/* Individual Cells */
-.cell-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 15px; padding-bottom: 80px; }
+/* Grid Sel Baterai */
+.cell-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 15px; padding-bottom: 100px; }
 .cell-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; text-align: center; }
 .cell-card b { font-size: 11px; color: var(--cyan); }
+
+/* Navigasi Bawah (Wajib Fixed) */
+.bottom-nav { 
+    position: fixed; bottom: 0; width: 100%; height: 75px; 
+    background: #161b22; display: flex; justify-content: space-around; 
+    align-items: center; border-top: 1px solid var(--border); z-index: 100;
+}
+.nav-item { color: var(--text-dim); cursor: pointer; padding: 10px; transition: 0.3s; }
+.nav-item.active { color: var(--cyan); transform: scale(1.1); }
+
+.page { display: none; padding: 10px; height: calc(100vh - 160px); overflow-y: auto; }
+.page.active { display: block; }

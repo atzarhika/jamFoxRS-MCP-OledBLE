@@ -48,14 +48,14 @@ async function toggleConnect() {
             rxChar = await service.getCharacteristic(RX_CHAR_UUID);
             bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
             setStatus(true);
-        } catch (e) { console.log(e); }
+        } catch (e) { alert("Bluetooth Gagal: " + e); }
     }
 }
 
 function updateUI(data) {
     if (!isConnected) return;
     
-    // 1. GAUGE RPM HALUS (100% = 1600 RPM)
+    // 1. GAUGE RPM (100% = 1600 RPM) 
     const rpm = data.rpm || 0;
     const maxRpm = 1600;
     const degrees = Math.min((rpm / maxRpm) * 360, 360);
@@ -63,12 +63,11 @@ function updateUI(data) {
     const circle = document.getElementById('gauge-circle');
     const ball = document.getElementById('glow-ball');
     
-    // Update Custom Property CSS agar animasi transition aktif
     circle.style.setProperty('--deg', `${degrees}deg`);
     circle.style.background = `radial-gradient(var(--card-bg) 64%, transparent 66%), 
                                conic-gradient(from 180deg, var(--cyan) ${degrees}deg, #21262d 0deg)`;
     
-    // Gerakan Bola Cahaya
+    // Bola Cahaya
     ball.style.display = "block";
     const angleRad = (degrees + 180 - 90) * (Math.PI / 180);
     const radius = 94; 
@@ -76,13 +75,12 @@ function updateUI(data) {
     const y = Math.sin(angleRad) * radius;
     ball.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
 
-    // 2. DASHBOARD & DATA TRIP BARU (V15.8)
+    // 2. DASHBOARD DATA 
     document.getElementById('speed').innerText = data.speed || 0;
     document.getElementById('rpm-val').innerText = rpm;
     document.getElementById('mode-text').innerText = data.mode || "PARK";
     document.getElementById('soc-dash').innerText = (data.soc || 0) + "%";
 
-    // Data dari objek "trip" di JSON
     if (data.trip) {
         document.getElementById('range-val').innerText = data.trip.range + " km";
         document.getElementById('trip-val').innerText = data.trip.km.toFixed(1) + " km";
@@ -90,7 +88,7 @@ function updateUI(data) {
         document.getElementById('avg-wh').innerText = data.trip.avg.toFixed(1);
     }
 
-    // 3. BATTERY & TEMPS
+    // 3. BATTERY 5 KOLOM 
     const v = data.volts || 0;
     const a = data.amps || 0;
     document.getElementById('soc-batt').innerText = (data.soc || 0) + "%";
@@ -122,7 +120,7 @@ function setStatus(status) {
     btn.innerText = status ? "DISCONNECT" : "CONNECT";
     btn.style.background = status ? "#f85149" : "#58a6ff";
     document.getElementById('conn-status').innerText = status ? "● ONLINE" : "● OFFLINE";
-    document.getElementById('conn-status').style.color = status ? "var(--green)" : "#f85149";
+    document.getElementById('conn-status').style.color = status ? "#3fb950" : "#f85149";
 }
 
 function onDisconnected() { setStatus(false); document.getElementById('glow-ball').style.display = "none"; }
