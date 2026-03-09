@@ -19,7 +19,11 @@ function generateCells() {
     const grid = document.getElementById('cell-grid');
     if (!grid || grid.innerHTML !== "") return;
     for (let i = 1; i <= 23; i++) {
-        grid.innerHTML += `<div class="cell-card"><span class="cell-id">C${i}</span><b id="c${i}-v">0.000V</b></div>`;
+        grid.innerHTML += `
+            <div class="cell-card">
+                <span class="cell-id">C${i}</span>
+                <b id="c${i}-v">0.000V</b>
+            </div>`;
     }
 }
 
@@ -44,13 +48,10 @@ async function toggleConnect() {
                     rxBuffer = lines.pop();
                     lines.forEach(line => { 
                         if (line.trim()) { 
-                            try { 
-                                const data = JSON.parse(line);
-                                updateUI(data); 
-                                // Logs Stream
-                                const lb = document.getElementById('log-box');
-                                if(lb) lb.innerText = line + "\n" + lb.innerText.substring(0, 500);
-                            } catch (e) {} 
+                            try { updateUI(JSON.parse(line)); } catch (e) {} 
+                            // Update Logs Stream
+                            const logBox = document.getElementById('log-box');
+                            if (logBox) logBox.innerText = line + "\n" + logBox.innerText.substring(0, 500);
                         } 
                     });
                 }
@@ -58,81 +59,90 @@ async function toggleConnect() {
             rxChar = await service.getCharacteristic(RX_CHAR_UUID);
             bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
             setStatus(true);
-        } catch (e) { alert("Bluetooth Gagal: " + e); }
+        } catch (e) { console.log(e); }
     }
 }
 
 function updateUI(data) {
     if (!isConnected) return;
     
-    // Gauge Logic (100% = 1600 RPM)
+    // GAUGE RPM (V15.8 logic: 100% = 1600 RPM)
     const rpm = data.rpm || 0;
-    const degrees = Math.min((rpm / 1600) * 360, 360);
+    const maxRpm = 1600;
+    const degrees = Math.min((rpm / maxRpm) * 360, 360);
     const circle = document.getElementById('gauge-circle');
     const ball = document.getElementById('glow-ball');
     
     circle.style.setProperty('--deg', `${degrees}deg`);
-    circle.style.background = `radial-gradient(var(--card-bg) 64%, transparent 66%), conic-gradient(from 180deg, var(--cyan) ${degrees}deg, #21262d 0deg)`;
+    circle.style.background = `radial-gradient(var(--card-bg) 64%, transparent 66%), 
+                               conic-gradient(from 180deg, var(--cyan) ${degrees}deg, #21262d 0deg)`;
     
     ball.style.display = "block";
     const angleRad = (degrees + 180 - 90) * (Math.PI / 180);
     const radius = 94; 
-    ball.style.transform = `translate(calc(-50% + ${Math.cos(angleRad) * radius}px), calc(-50% + ${Math.sin(angleRad) * radius}px))`;
+    const x = Math.cos(angleRad) * radius;
+    const y = Math.sin(angleRad) * radius;
+    ball.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
 
-    // Dashboard Data
+    // DASHBOARD DATA
     document.getElementById('speed').innerText = data.speed || 0;
     document.getElementById('rpm-val').innerText = rpm;
     document.getElementById('mode-text').innerText = data.mode || "PARK";
     document.getElementById('soc-dash').innerText = (data.soc || 0) + "%";
 
-    // Trip & Range Data (V15.8) 
-    if (data.trip) {
-        document.getElementById('range-val').innerText = data.trip.range + " km";
-        document.getElementById('trip-val').innerText = data.trip.km.toFixed(1) + " km";
-        document.getElementById('trip-dist-large').innerText = data.trip.km.toFixed(1) + " km";
-        document.getElementById('avg-wh').innerText = data.trip.avg.toFixed(1);
-        document.getElementById('est-range-large').innerText = data.trip.range + " km";
-    }
-
-    // Battery Stats
-    document.getElementById('soc-batt').innerText = (data.soc || 0) + "%";
-    document.getElementById('soh-val').innerText = (data.health ? data.health.soh : 0) + "%";
-    document.getElementById('v-val').innerText = (data.volts || 0).toFixed(1) + "V";
-    document.getElementById('a-val').innerText = (data.amps || 0).toFixed(1) + "A";
-    document.getElementById('w-val').innerText = Math.abs((data.volts || 0) * (data.amps || 0)).toFixed(0) + "W";
-    document.getElementById('soc-bar').style.width = (data.soc || 0) + "%";
-
+    // Suhu diperbesar font-nya di CSS
     if(data.temps) {
         document.getElementById('t-ecu').innerText = data.temps.ctrl + "°";
         document.getElementById('t-motor').innerText = data.temps.motor + "°";
         document.getElementById('t-batt').innerText = data.temps.batt + "°";
     }
 
-    // Cells Update
+    // TRIP & RANGE DATA (Fixed V15.8)
+    if (data.trip) {
+        const rangeText = data.trip.range + " km";
+        document.getElementById('range-val').innerText = rangeText;
+        document.getElementById('trip-val').innerText = data.trip.km.toFixed(1) + " km";
+        document.getElementById('trip-dist-large').innerText = data.trip.km.toFixed(1) + " km";
+        document.getElementById('avg-wh').innerText = data.trip.avg.toFixed(1);
+        document.getElementById('est-range-trip').innerText = rangeText;
+    }
+
+    // BATTERY DATA
+    const v = data.volts || 0;
+    const a = data.amps || 0;
+    document.getElementById('soc-batt').innerText = (data.soc || 0) + "%";
+    document.getElementById('soh-val').innerText = (data.health ? data.health.soh : 0) + "%";
+    document.getElementById('v-val').innerText = v.toFixed(1) + "V";
+    document.getElementById('a-val').innerText = a.toFixed(1) + "A";
+    document.getElementById('w-val').innerText = Math.abs(v * a).toFixed(0) + "W";
+    document.getElementById('soc-bar').style.width = (data.soc || 0) + "%";
+
+    // CELLS
     if (data.cells) {
         data.cells.forEach((mv, i) => {
+            const volt = (mv / 1000).toFixed(3);
             const text = document.getElementById(`c${i+1}-v`);
-            if (text) text.innerText = (mv / 1000).toFixed(3) + "V";
+            if (text) text.innerText = volt + "V";
         });
     }
 }
 
-// Perbaikan: Fungsi Settings [cite: 118, 120]
+// SETTINGS ACTIONS
 async function sendSplash() {
-    if (!rxChar) return alert("Bluetooth Belum Terhubung!");
+    if (!rxChar) { alert("Not Connected!"); return; }
     const val = document.getElementById('splashInput').value;
     if (val) {
         await rxChar.writeValue(new TextEncoder().encode(`SPLASH,${val}\n`));
-        alert("Perintah Splash dikirim: " + val);
+        alert("Splash Screen Updated!");
     }
 }
 
 async function syncTime() {
-    if (!rxChar) return alert("Bluetooth Belum Terhubung!");
+    if (!rxChar) { alert("Not Connected!"); return; }
     const n = new Date();
     const cmd = `TIME,${n.getFullYear()},${n.getMonth()+1},${n.getDate()},${n.getHours()},${n.getMinutes()},${n.getSeconds()}\n`;
     await rxChar.writeValue(new TextEncoder().encode(cmd));
-    alert("Waktu Disinkronkan!");
+    alert("Time Synced to Device!");
 }
 
 function setStatus(status) {
