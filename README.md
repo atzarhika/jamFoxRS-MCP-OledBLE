@@ -1,4 +1,4 @@
-# ⚡ DOKUMENTASI RESMI: VOTOL Smart Dashboard POLYTRON FOX RS V15.1 Pro (BLE Edition)
+# ⚡ DOKUMENTASI : VOTOL Smart Dashboard POLYTRON FOX RS V15.1 Pro (BLE Edition)
 
 **Deskripsi Proyek:**
 VOTOL Smart Dashboard adalah instrumen kokpit tambahan berteknologi tinggi untuk motor listrik dengan *controller* VOTOL (khususnya Polytron Fox-R). Alat ini membaca data spesifik pabrikan (Suhu, RPM, Voltase, Arus, hingga Status Per-Cell Baterai BMS) langsung dari jalur CAN Bus menggunakan modul MCP2515.
