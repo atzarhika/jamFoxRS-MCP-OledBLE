@@ -19,7 +19,7 @@
 #include <BLE2902.h>
 
 // ================= KONFIGURASI ALAT =================
-const char* FW_VERSION = "V15.6"; 
+const char* FW_VERSION = "V15.8"; 
 
 // ================= KONFIGURASI PIN =================
 #define SDA_PIN 8       
@@ -155,8 +155,7 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
 
 // ================= DEKLARASI FUNGSI =================
 void showCenteredText(String text, int yPos) {
-  int16_t x1, y1;
-  uint16_t w, h;
+  int16_t x1, y1; uint16_t w, h;
   display.getTextBounds(text, 0, yPos, &x1, &y1, &w, &h); 
   int xPos = (128 - w) / 2; 
   if (xPos < 0) xPos = 0; 
@@ -228,10 +227,7 @@ void initBLE() {
 }
 
 void performNtpSync(bool silent) {
-  if(!silent) {
-    display.clearDisplay(); display.setFont(); display.setCursor(0,0); 
-    display.println("WIFI SYNCING..."); display.print("SSID: "); display.println(ssid); display.display();
-  }
+  if(!silent) { display.clearDisplay(); display.setFont(); display.setCursor(0,0); display.println("WIFI SYNCING..."); display.print("SSID: "); display.println(ssid); display.display(); }
   WiFi.mode(WIFI_STA); WiFi.disconnect(); delay(100);
   WiFi.begin(ssid.c_str(), password.c_str());
   int wifiTimeout = 0;
@@ -310,8 +306,18 @@ void buildJsonInto() {
   char cellsStr[256] = {0}; int cpos = 0;
   for (int i = 0; i < 23; i++) { int remain = sizeof(cellsStr) - cpos; if (remain > 0) cpos += snprintf(cellsStr + cpos, remain, "%u%s", valCells[i], (i < 22) ? "," : ""); }
 
+  // KALKULASI TRIP METER UNTUK DIKIRIM KE WEB (V15.8)
+  float avg_wh = (trip_km > 0.5) ? (trip_wh / trip_km) : 0.0;
+  int est_range = 0;
+  if (avg_wh > 1.0) {
+      est_range = (int)((39.6 * soc) / avg_wh); // Menggunakan 39.6 Wh (Kapasitas 55Ah)
+      if (est_range > 130) est_range = 130;     // Dibatasi maksimal 130KM
+  }
+
+  // MENYUNTIKKAN DATA TRIP KE DALAM JSON
   bleTxLen = snprintf(bleTxBuf, sizeof(bleTxBuf),
     "{\"rpm\":%d,\"speed\":%d,\"mode\":\"%s\",\"volts\":%.1f,\"amps\":%.1f,\"power\":%.0f,\"soc\":%d,"
+    "\"trip\":{\"km\":%.1f,\"avg\":%.1f,\"range\":%d},"
     "\"temps\":{\"ctrl\":%d,\"motor\":%d,\"batt\":%d},\"cells\":[%s],\"cellDelta\":%d,"
     "\"canRate\":%lu,\"odometer\":%lu,\"health\":{\"soh\":%d,\"cycles\":%u,\"remainCap\":%.1f,\"fullCap\":%.1f},"
     "\"cellVoltStats\":{\"highest\":%u,\"highestCell\":%u,\"lowest\":%u,\"lowestCell\":%u,\"avg\":%u},"
@@ -320,6 +326,7 @@ void buildJsonInto() {
     "\"charger\":{\"on\":%d,\"v\":%.1f,\"a\":%.1f,\"ori\":%d},"
     "\"bms\":{\"hw\":\"%s\",\"fw\":\"%s\"},\"hb\":%lu}\n",
     rpm, speed_kmh, currentMode.c_str(), volts, amps, power_watt, soc,
+    trip_km, avg_wh, est_range,
     tempCtrl, tempMotor, tempBatt, cellsStr, cellDelta,
     (unsigned long)canMessagesPerSec, (unsigned long)valOdometer,
     valSOH, valCycleCount, valRemainingCapacity, valFullCapacity,
@@ -359,7 +366,6 @@ void executeSettingAction() {
 }
 
 void updateOLED() {
-  // UPDATE PENTING: Ijinkan akses halaman 5 saat BLE ON
   if (bleEnabled && currentPage != 1 && currentPage != 5 && !inSettingsMode) { currentPage = 1; }
   display.clearDisplay(); display.setTextColor(SSD1306_WHITE);
 
@@ -403,39 +409,42 @@ void updateOLED() {
     case 4: { 
       int pwr = abs((int)power_watt); display.setTextSize(2); display.setCursor(10, 4); display.print((power_watt > 0.1f) ? "+" : "-"); display.setTextSize(3); display.setCursor(32, 2); display.print(pwr); display.setTextSize(1); display.setCursor(102, 22); display.print("watt"); break;
     }
-    case 5: { // --- HALAMAN TRIP METER DIROMBAK ---
-      float avg_wh = (trip_km > 0.1) ? (trip_wh / trip_km) : 0.0;
-      float est_range = (avg_wh > 5.0) ? ((37.44 * soc) / avg_wh) : 0.0; 
+    case 5: { 
+      float avg_wh = (trip_km > 0.5) ? (trip_wh / trip_km) : 0.0;
+      int est_range = 0;
+      if (avg_wh > 1.0) {
+          est_range = (int)((39.6 * soc) / avg_wh); // 39.6 Wh = 55Ah
+          if (est_range > 130) est_range = 130;     // Maksimal 130 KM (Hard Cap)
+      }
       
       int16_t x1, y1; uint16_t w, h;
       display.setTextSize(1); 
-      
-      // Kiri Atas
       display.setCursor(0, 0); display.print("TRIP(KM)"); 
       
-      // Kanan Atas (Rata Kanan)
       String rightHeader = "AVG(Wh/km)";
       display.getTextBounds(rightHeader, 0, 0, &x1, &y1, &w, &h);
       display.setCursor(128 - w, 0); display.print(rightHeader);
 
       display.setTextSize(2); 
-      
-      // Kiri Tengah
       display.setCursor(0, 8); display.print(trip_km, 1); 
       
-      // Kanan Tengah (Rata Kanan)
       String rightValue = String(avg_wh, 1);
       display.getTextBounds(rightValue, 0, 0, &x1, &y1, &w, &h);
       display.setCursor(128 - w, 8); display.print(rightValue);
 
-      // Bawah Tengah (Rata Tengah)
       display.setTextSize(1); 
-      String bottomText = "EST RANGE: " + String((int)est_range) + " KM";
+      String bottomText = "";
+      if (trip_km < 1.0) {
+          bottomText = "CALCULATING...";
+      } else {
+          bottomText = "EST RANGE: " + String(est_range) + " KM";
+      }
+      
       display.getTextBounds(bottomText, 0, 0, &x1, &y1, &w, &h);
       display.setCursor((128 - w) / 2, 24); display.print(bottomText);
       break;
     }
-    case 6: { // --- HALAMAN SYSTEM INFO (PINDAH KE BAWAH) ---
+    case 6: { 
       display.setTextSize(1); display.setCursor(0, 0);  display.print("WIFI: "); display.print(ssid); display.setCursor(0, 8);  display.print("PASS: "); display.print(password);
       display.setCursor(0, 16); display.print("NAME: "); display.print(splashText); display.setCursor(0, 24); display.print("FW  : "); display.print(FW_VERSION); break;
     }
@@ -449,9 +458,10 @@ void loop() {
   unsigned long now = millis();
   if (lastCalcTime == 0) lastCalcTime = now;
   unsigned long dt = now - lastCalcTime;
+  
   if (dt > 0) {
       if (speed_kmh > 0) trip_km += (speed_kmh * dt) / 3600000.0; 
-      if (power_watt > 0) trip_wh += (power_watt * dt) / 3600000.0; 
+      if (fabs(power_watt) > 0) trip_wh += (fabs(power_watt) * dt) / 3600000.0; 
       lastCalcTime = now;
   }
 
@@ -472,7 +482,6 @@ void loop() {
           if (!bleEnabled) { 
               currentPage++; if (currentPage > 6) currentPage = 1; 
           } else { 
-              // UPDATE: Saat BLE ON, klik tombol akan bolak-balik Halaman 1 dan 5 saja
               if (currentPage == 1) currentPage = 5; else currentPage = 1; 
           }
           lastButtonPress = now; 
@@ -483,7 +492,7 @@ void loop() {
     if (inSettingsMode) {
       if (duration >= 3000 && !handled3s) { handled3s = true; if(soundEnabled) beepEndTime = millis() + 100; executeSettingAction(); }
     } else {
-      if (currentPage == 5 && duration >= 3000 && duration < 5000 && !handled3s) { // Reset Trip
+      if (currentPage == 5 && duration >= 3000 && duration < 5000 && !handled3s) { 
           handled3s = true; handled5s = true; 
           trip_km = 0.0; trip_wh = 0.0; last_saved_trip_km = 0.0; preferences.putFloat("trip_km", 0.0); preferences.putFloat("trip_wh", 0.0);
           if(soundEnabled) beepEndTime = millis() + 300;
@@ -498,7 +507,6 @@ void loop() {
   }
   lastBtnState = btnState;
 
-  // UPDATE: Auto Sleep akan membiarkan Anda tetap di halaman Trip (5)
   if (!inSettingsMode && (now - lastButtonPress > 30000) && currentPage != 1 && currentPage != 5 && !showModePopup && !isCharging && speed_kmh <= 70) { currentPage = 1; }
   if (now - lastDisplayUpdate > 100) { updateOLED(); lastDisplayUpdate = now; }
   delay(5); 
