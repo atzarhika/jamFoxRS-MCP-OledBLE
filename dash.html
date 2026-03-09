@@ -1,0 +1,34 @@
+<section id="dash" class="page-content">
+    <div class="main-speed">
+        <div class="speed-circle" id="gauge-circle">
+            <div class="glow-ball" id="glow-ball"></div>
+            <h2 id="speed">0</h2>
+            <span class="label">KM/H</span>
+            <div class="rpm-display" id="rpm-val">0</div>
+        </div>
+        <div class="mode-badge" id="mode-text">PARK</div>
+    </div>
+
+    <div class="info-grid-3">
+        <div class="card mini"><i data-lucide="map-pin"></i><span class="label">RANGE</span><b id="range-val">0 km</b></div>
+        <div class="card mini"><i data-lucide="milestone"></i><span class="label">TRIP</span><b id="trip-val">0.0 km</b></div>
+        <div class="card mini"><i data-lucide="battery"></i><span class="label">SOC</span><b id="soc-dash">0%</b></div>
+        
+        <div class="card" style="grid-column: span 3;">
+            <div class="temp-grid-3">
+                <div class="temp-item stat-box">
+                    <small class="label">ECU</small>
+                    <b id="t-ecu" style="color:var(--orange); font-size: 20px;">0°</b>
+                </div>
+                <div class="temp-item stat-box">
+                    <small class="label">MOTOR</small>
+                    <b id="t-motor" style="color:var(--orange); font-size: 20px;">0°</b>
+                </div>
+                <div class="temp-item stat-box">
+                    <small class="label">BATT</small>
+                    <b id="t-batt" style="color:var(--orange); font-size: 20px;">0°</b>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

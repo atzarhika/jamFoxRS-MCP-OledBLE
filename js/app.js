@@ -7,23 +7,29 @@ const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
 const TX_CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
 const RX_CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a9";
 
-function nav(pageId) {
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.getElementById(pageId).classList.add('active');
-    if (window.event) window.event.currentTarget.classList.add('active');
-    if (pageId === 'battery') generateCells();
+// FUNGSI LOAD PAGE DINAMIS
+async function loadPage(pageName, element) {
+    try {
+        const response = await fetch(`${pageName}.html`);
+        const html = await response.text();
+        document.getElementById('page-container').innerHTML = html;
+        
+        lucide.createIcons();
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        if(element) element.classList.add('active');
+
+        if(pageName === 'battery') generateCells();
+        
+    } catch (error) { console.error('Error:', error); }
 }
+
+window.addEventListener('DOMContentLoaded', () => loadPage('dash'));
 
 function generateCells() {
     const grid = document.getElementById('cell-grid');
     if (!grid || grid.innerHTML !== "") return;
     for (let i = 1; i <= 23; i++) {
-        grid.innerHTML += `
-            <div class="cell-card">
-                <span class="cell-id">C${i}</span>
-                <b id="c${i}-v">0.000V</b>
-            </div>`;
+        grid.innerHTML += `<div class="cell-card"><span class="cell-id">C${i}</span><b id="c${i}-v">0.000V</b></div>`;
     }
 }
 
@@ -49,9 +55,8 @@ async function toggleConnect() {
                     lines.forEach(line => { 
                         if (line.trim()) { 
                             try { updateUI(JSON.parse(line)); } catch (e) {} 
-                            // Update Logs Stream
-                            const logBox = document.getElementById('log-box');
-                            if (logBox) logBox.innerText = line + "\n" + logBox.innerText.substring(0, 500);
+                            const lb = document.getElementById('log-box');
+                            if (lb) lb.innerText = line + "\n" + lb.innerText.substring(0, 500);
                         } 
                     });
                 }
@@ -66,70 +71,66 @@ async function toggleConnect() {
 function updateUI(data) {
     if (!isConnected) return;
     
-    // GAUGE RPM (V15.8 logic: 100% = 1600 RPM)
+    // GAUGE & DASH (Aman: Cek Elemen ada atau tidak)
+    const speedEl = document.getElementById('speed');
+    if (speedEl) speedEl.innerText = data.speed || 0;
+
     const rpm = data.rpm || 0;
-    const maxRpm = 1600;
-    const degrees = Math.min((rpm / maxRpm) * 360, 360);
+    const rpmValEl = document.getElementById('rpm-val');
+    if (rpmValEl) rpmValEl.innerText = rpm;
+
     const circle = document.getElementById('gauge-circle');
     const ball = document.getElementById('glow-ball');
-    
-    circle.style.setProperty('--deg', `${degrees}deg`);
-    circle.style.background = `radial-gradient(var(--card-bg) 64%, transparent 66%), 
-                               conic-gradient(from 180deg, var(--cyan) ${degrees}deg, #21262d 0deg)`;
-    
-    ball.style.display = "block";
-    const angleRad = (degrees + 180 - 90) * (Math.PI / 180);
-    const radius = 94; 
-    const x = Math.cos(angleRad) * radius;
-    const y = Math.sin(angleRad) * radius;
-    ball.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
-
-    // DASHBOARD DATA
-    document.getElementById('speed').innerText = data.speed || 0;
-    document.getElementById('rpm-val').innerText = rpm;
-    document.getElementById('mode-text').innerText = data.mode || "PARK";
-    document.getElementById('soc-dash').innerText = (data.soc || 0) + "%";
-
-    // Suhu diperbesar font-nya di CSS
-    if(data.temps) {
-        document.getElementById('t-ecu').innerText = data.temps.ctrl + "°";
-        document.getElementById('t-motor').innerText = data.temps.motor + "°";
-        document.getElementById('t-batt').innerText = data.temps.batt + "°";
+    if (circle) {
+        const degrees = Math.min((rpm / 1600) * 360, 360);
+        circle.style.setProperty('--deg', `${degrees}deg`);
+        circle.style.background = `radial-gradient(var(--card-bg) 64%, transparent 66%), conic-gradient(from 180deg, var(--cyan) ${degrees}deg, #21262d 0deg)`;
+        if (ball) {
+            ball.style.display = "block";
+            const angleRad = (degrees + 180 - 90) * (Math.PI / 180);
+            const x = Math.cos(angleRad) * 94;
+            const y = Math.sin(angleRad) * 94;
+            ball.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+        }
     }
 
-    // TRIP & RANGE DATA (Fixed V15.8)
-    if (data.trip) {
-        const rangeText = data.trip.range + " km";
-        document.getElementById('range-val').innerText = rangeText;
-        document.getElementById('trip-val').innerText = data.trip.km.toFixed(1) + " km";
-        document.getElementById('trip-dist-large').innerText = data.trip.km.toFixed(1) + " km";
-        document.getElementById('avg-wh').innerText = data.trip.avg.toFixed(1);
-        document.getElementById('est-range-trip').innerText = rangeText;
+    // UPDATE DATA (Global IDs)
+    const ids = {
+        'range-val': data.trip?.range + " km",
+        'trip-val': (data.trip?.km || 0).toFixed(1) + " km",
+        'soc-dash': (data.soc || 0) + "%",
+        'soc-batt': (data.soc || 0) + "%",
+        'soh-val': (data.health?.soh || 0) + "%",
+        'v-val': (data.volts || 0).toFixed(1) + "V",
+        'a-val': (data.amps || 0).toFixed(1) + "A",
+        'w-val': Math.abs((data.volts || 0) * (data.amps || 0)).toFixed(0) + "W",
+        'trip-dist-large': (data.trip?.km || 0).toFixed(1) + " km",
+        'avg-wh': (data.trip?.avg || 0).toFixed(1),
+        'est-range-trip': (data.trip?.range || 0) + " km",
+        't-ecu': (data.temps?.ctrl || 0) + "°",
+        't-motor': (data.temps?.motor || 0) + "°",
+        't-batt': (data.temps?.batt || 0) + "°"
+    };
+
+    for (const [id, val] of Object.entries(ids)) {
+        const el = document.getElementById(id);
+        if (el) el.innerText = val;
     }
+    const bar = document.getElementById('soc-bar');
+    if (bar) bar.style.width = (data.soc || 0) + "%";
 
-    // BATTERY DATA
-    const v = data.volts || 0;
-    const a = data.amps || 0;
-    document.getElementById('soc-batt').innerText = (data.soc || 0) + "%";
-    document.getElementById('soh-val').innerText = (data.health ? data.health.soh : 0) + "%";
-    document.getElementById('v-val').innerText = v.toFixed(1) + "V";
-    document.getElementById('a-val').innerText = a.toFixed(1) + "A";
-    document.getElementById('w-val').innerText = Math.abs(v * a).toFixed(0) + "W";
-    document.getElementById('soc-bar').style.width = (data.soc || 0) + "%";
-
-    // CELLS
+    // CELLS (V15.8)
     if (data.cells) {
         data.cells.forEach((mv, i) => {
-            const volt = (mv / 1000).toFixed(3);
-            const text = document.getElementById(`c${i+1}-v`);
-            if (text) text.innerText = volt + "V";
+            const el = document.getElementById(`c${i+1}-v`);
+            if (el) el.innerText = (mv / 1000).toFixed(3) + "V";
         });
     }
 }
 
 // SETTINGS ACTIONS
 async function sendSplash() {
-    if (!rxChar) { alert("Not Connected!"); return; }
+    if (!rxChar) return;
     const val = document.getElementById('splashInput').value;
     if (val) {
         await rxChar.writeValue(new TextEncoder().encode(`SPLASH,${val}\n`));
@@ -138,11 +139,11 @@ async function sendSplash() {
 }
 
 async function syncTime() {
-    if (!rxChar) { alert("Not Connected!"); return; }
+    if (!rxChar) return;
     const n = new Date();
     const cmd = `TIME,${n.getFullYear()},${n.getMonth()+1},${n.getDate()},${n.getHours()},${n.getMinutes()},${n.getSeconds()}\n`;
     await rxChar.writeValue(new TextEncoder().encode(cmd));
-    alert("Time Synced to Device!");
+    alert("Time Synced!");
 }
 
 function setStatus(status) {
@@ -150,11 +151,12 @@ function setStatus(status) {
     const btn = document.getElementById('connectBtn');
     btn.innerText = status ? "DISCONNECT" : "CONNECT";
     btn.style.background = status ? "#f85149" : "#58a6ff";
-    document.getElementById('conn-status').innerText = status ? "● ONLINE" : "● OFFLINE";
-    document.getElementById('conn-status').style.color = status ? "#3fb950" : "#f85149";
+    const st = document.getElementById('conn-status');
+    st.innerText = status ? "● ONLINE" : "● OFFLINE";
+    st.style.color = status ? "#3fb950" : "#f85149";
 }
 
-function onDisconnected() { setStatus(false); document.getElementById('glow-ball').style.display = "none"; }
+function onDisconnected() { setStatus(false); }
 
 setInterval(() => {
     document.getElementById('clock').innerText = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});

@@ -8,7 +8,6 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
-
     <header class="top-header">
         <div class="status-bar">
             <span id="conn-status">● OFFLINE</span> <span id="clock">00:00</span>
@@ -17,89 +16,17 @@
     </header>
 
     <main id="main-content">
-        <section id="dash" class="page active">
-            <div class="main-speed">
-                <div class="speed-circle" id="gauge-circle">
-                    <div class="glow-ball" id="glow-ball"></div>
-                    <h2 id="speed">0</h2>
-                    <span class="label">KM/H</span>
-                    <div class="rpm-display" id="rpm-val">0</div>
-                </div>
-                <div class="mode-badge" id="mode-text">PARK</div>
-            </div>
-
-            <div class="info-grid-3">
-                <div class="card mini"><i data-lucide="map-pin"></i><span class="label">RANGE</span><b id="range-val">0 km</b></div>
-                <div class="card mini"><i data-lucide="milestone"></i><span class="label">TRIP</span><b id="trip-val">0.0 km</b></div>
-                <div class="card mini"><i data-lucide="battery"></i><span class="label">SOC</span><b id="soc-dash">0%</b></div>
-                
-                <div class="card" style="grid-column: span 3;">
-                    <div class="temp-grid-3">
-                        <div class="temp-item"><small class="label">ECU</small><b id="t-ecu" style="color:var(--orange)">0°</b></div>
-                        <div class="temp-item"><small class="label">MOTOR</small><b id="t-motor" style="color:var(--orange)">0°</b></div>
-                        <div class="temp-item"><small class="label">BATT</small><b id="t-batt" style="color:var(--orange)">0°</b></div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section id="battery" class="page">
-            <div class="card">
-                <span class="label">BATTERY ENERGY (SOC)</span>
-                <div class="soc-bar-container"><div id="soc-bar" class="soc-fill"></div></div>
-                <div class="stats-row-5">
-                    <div class="stat-item"><small>SOC</small><b id="soc-batt">0%</b></div>
-                    <div class="stat-item"><small>BH</small><b id="soh-val">0%</b></div>
-                    <div class="stat-item"><small>VOLT</small><b id="v-val">0.0V</b></div>
-                    <div class="stat-item"><small>AMP</small><b id="a-val">0.0A</b></div>
-                    <div class="stat-item"><small>WATT</small><b id="w-val">0W</b></div>
-                </div>
-            </div>
-            <div id="cell-grid" class="cell-grid"></div>
-        </section>
-
-        <section id="trip-page" class="page">
-            <div class="card">
-                <span class="label">TRIP ANALYTICS</span>
-                <div class="stats-row-5" style="margin-top: 15px;">
-                    <div class="stat-item"><small>DISTANCE</small><b id="trip-dist-large">0.0 km</b></div>
-                    <div class="stat-item"><small>AVG WH/KM</small><b id="avg-wh">0.0</b></div>
-                    <div class="stat-item"><small>EST RANGE</small><b id="est-range-trip" style="color:var(--cyan)">0 km</b></div>
-                </div>
-            </div>
-        </section>
-
-        <section id="logs" class="page">
-            <div class="card">
-                <span class="label">CAN DATA STREAM</span>
-                <pre id="log-box">Waiting for JSON data...</pre>
-            </div>
-        </section>
-
-        <section id="settings" class="page">
-            <div class="card">
-                <span class="label">SPLASHSCREEN SETTING</span>
-                <div class="input-group">
-                    <input type="text" id="splashInput" placeholder="New Name (Max 10)">
-                    <button class="btn-action" onclick="sendSplash()">SET</button>
-                </div>
-            </div>
-            <div class="card">
-                <span class="label">TIME SYNCHRONIZATION</span>
-                <button class="btn-full" onclick="syncTime()">SYNC TIME TO RTC</button>
-            </div>
-        </section>
+        <div id="page-container"></div>
     </main>
 
     <nav class="bottom-nav">
-        <div class="nav-item active" onclick="nav('dash')"><i data-lucide="gauge"></i></div>
-        <div class="nav-item" onclick="nav('battery')"><i data-lucide="battery-charging"></i></div>
-        <div class="nav-item" onclick="nav('trip-page')"><i data-lucide="route"></i></div>
-        <div class="nav-item" onclick="nav('logs')"><i data-lucide="scroll-text"></i></div>
-        <div class="nav-item" onclick="nav('settings')"><i data-lucide="settings"></i></div>
+        <div class="nav-item active" onclick="loadPage('dash', this)"><i data-lucide="gauge"></i></div>
+        <div class="nav-item" onclick="loadPage('battery', this)"><i data-lucide="battery-charging"></i></div>
+        <div class="nav-item" onclick="loadPage('trip', this)"><i data-lucide="route"></i></div>
+        <div class="nav-item" onclick="loadPage('logs', this)"><i data-lucide="scroll-text"></i></div>
+        <div class="nav-item" onclick="loadPage('settings', this)"><i data-lucide="settings"></i></div>
     </nav>
 
     <script src="js/app.js"></script>
-    <script>lucide.createIcons();</script>
 </body>
 </html>
