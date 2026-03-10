@@ -63,13 +63,13 @@ function initCharts() {
 function updateUI(data) {
     if (!isConnected) return;
 
-    // A. Update Memori Grafik (Latar Belakang)
+    // 1. UPDATE DATA MEMORY GRAFIK (Selalu berjalan)
     speedHistory.push(data.speed || 0);
     currentHistory.push(Math.abs(data.amps || 0));
     speedHistory.shift();
     currentHistory.shift();
 
-    // B. Update Visual Grafik (Jika halaman Trip aktif)
+    // 2. UPDATE VISUAL GRAFIK (Hanya jika di halaman Trip)
     if (speedChart && currentChart) {
         speedChart.data.datasets[0].data = [...speedHistory];
         currentChart.data.datasets[0].data = [...currentHistory];
@@ -77,37 +77,63 @@ function updateUI(data) {
         currentChart.update('none');
     }
 
-    // C. Update Logs (Jika halaman Logs aktif)
-    const logBox = document.getElementById('log-box');
-    if (logBox) {
-        logBox.innerText = JSON.stringify(data) + "\n" + logBox.innerText.substring(0, 1000);
+    // 3. FIX: UPDATE MODE BERKENDARA (Menggunakan data.mode dari firmware)
+    const modeEl = document.getElementById('mode-text');
+    if (modeEl && data.mode) {
+        modeEl.innerText = data.mode;
+        const m = data.mode.toUpperCase();
+        // Penyesuaian warna sesuai status mode berkendara 
+        if (m === "SPORT") modeEl.style.backgroundColor = "#d29922";
+        else if (m === "DRIVE") modeEl.style.backgroundColor = "#238636";
+        else if (m === "REVERSE") modeEl.style.backgroundColor = "#bc8cff";
+        else if (m === "PARK") modeEl.style.backgroundColor = "#30363d";
+        else modeEl.style.backgroundColor = "#f85149"; // BRAKE/STAND
     }
 
-    // D. Update Dashboard Gauge & Mode
+    // 4. UPDATE GAUGE RPM & SPEED
     const rpm = data.rpm || 0;
+    const speedEl = document.getElementById('speed');
+    if (speedEl) speedEl.innerText = data.speed || 0;
+    
+    const rpmValEl = document.getElementById('rpm-val');
+    if (rpmValEl) rpmValEl.innerText = rpm;
+
     const circle = document.getElementById('gauge-circle');
     if (circle) {
         const deg = Math.min((rpm / 1600) * 360, 360);
         circle.style.setProperty('--deg', `${deg}deg`);
         circle.style.background = `radial-gradient(var(--card-bg) 64%, transparent 66%), conic-gradient(from 180deg, var(--cyan) ${deg}deg, #21262d 0deg)`;
+        
         const ball = document.getElementById('glow-ball');
         if (ball) {
             ball.style.display = "block";
             const rad = (deg + 180 - 90) * (Math.PI / 180);
-            ball.style.transform = `translate(calc(-50% + ${Math.cos(rad)*100}px), calc(-50% + ${Math.sin(rad)*100}px))`;
+            const x = Math.cos(rad) * 100;
+            const y = Math.sin(rad) * 100;
+            ball.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
         }
     }
 
-    // E. Update Teks Data Global
+    // 5. FIX: AKSES DATA TRIP & RANGE (Nested Object) 
+    // Firmware mengirim: "trip":{"km":x.x, "avg":x.x, "range":x}
+    const tripData = data.trip || {};
+    
     const vals = {
-        'speed': data.speed || 0, 'rpm-val': rpm, 'soc-dash': (data.soc || 0) + "%",
-        'soc-batt': (data.soc || 0) + "%", 'soh-val': (data.health?.soh || 0) + "%",
-        'v-val': (data.volts || 0).toFixed(1) + "V", 'a-val': (data.amps || 0).toFixed(1) + "A",
-        'w-val': Math.abs((data.volts||0)*(data.amps||0)).toFixed(0) + "W",
-        'trip-dist-large': (data.trip?.km || 0).toFixed(1) + " km",
-        'avg-wh': (data.trip?.avg || 0).toFixed(1),
-        'est-range-trip': (data.trip?.range || 0) + " km",
-        't-ecu': (data.temps?.ctrl || 0) + "°", 't-motor': (data.temps?.motor || 0) + "°", 't-batt': (data.temps?.batt || 0) + "°"
+        'range-val': (tripData.range || 0) + " km",      // Mengambil dari data.trip.range
+        'trip-val': (tripData.km || 0).toFixed(1) + " km", // Mengambil dari data.trip.km
+        'soc-dash': (data.soc || 0) + "%",
+        'soc-batt': (data.soc || 0) + "%",
+        'soh-val': (data.health?.soh || 0) + "%",
+        'v-val': (data.volts || 0).toFixed(1) + "V",
+        'a-val': (data.amps || 0).toFixed(1) + "A",
+        'w-val': Math.abs((data.volts || 0) * (data.amps || 0)).toFixed(0) + "W",
+        't-ecu': (data.temps?.ctrl || 0) + "°",
+        't-motor': (data.temps?.motor || 0) + "°",
+        't-batt': (data.temps?.batt || 0) + "°",
+        // ID besar di halaman Trip Analytics
+        'trip-dist-large': (tripData.km || 0).toFixed(1) + " km",
+        'avg-wh': (tripData.avg || 0).toFixed(1),
+        'est-range-trip': (tripData.range || 0) + " km"
     };
 
     for (const [id, val] of Object.entries(vals)) {
@@ -115,11 +141,16 @@ function updateUI(data) {
         if (el) el.innerText = val;
     }
 
-    // F. FIX: Update Bar Baterai
+    // 6. UPDATE SOC BAR & LOGS
     const bar = document.getElementById('soc-bar');
     if (bar) bar.style.width = (data.soc || 0) + "%";
 
-    // G. Update Cell BMS
+    const logBox = document.getElementById('log-box');
+    if (logBox) {
+        logBox.innerText = JSON.stringify(data) + "\n" + logBox.innerText.substring(0, 1000);
+    }
+
+    // 7. UPDATE BMS CELLS
     if (data.cells) {
         data.cells.forEach((mv, i) => {
             const el = document.getElementById(`c${i+1}-v`);
