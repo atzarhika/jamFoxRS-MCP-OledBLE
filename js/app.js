@@ -7,7 +7,7 @@ let isConnected = false;
 let bluetoothDevice, rxChar, txChar;
 let rxBuffer = "";
 
-// PENYIMPANAN DATA RIWAYAT GLOBAL
+// KOMENTAR: Variabel memori grafik global agar data tidak hilang saat pindah menu
 let speedHistory = Array(30).fill(0);
 let currentHistory = Array(30).fill(0);
 let speedChart = null;
@@ -22,7 +22,7 @@ async function loadPage(pageName, element) {
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
         if(element) element.classList.add('active');
         
-        // Reset referensi chart saat pindah halaman agar tidak bentrok
+        // KOMENTAR: Reset referensi grafik lama agar bisa membuat grafik baru di elemen canvas yang baru
         speedChart = null;
         currentChart = null;
 
@@ -43,30 +43,21 @@ function initCharts() {
         elements: { line: {tension:0.4, borderWidth:2}, point: {radius:0} }
     };
 
-    // Load data dari riwayat global
-    speedChart = new Chart(ctxS, { 
-        type: 'line', 
-        data: { labels: Array(30).fill(''), datasets: [{ data: [...speedHistory], borderColor: '#d29922', fill: true, backgroundColor: 'rgba(210, 153, 34, 0.1)' }] }, 
-        options: opt 
-    });
-
-    currentChart = new Chart(ctxC, { 
-        type: 'line', 
-        data: { labels: Array(30).fill(''), datasets: [{ data: [...currentHistory], borderColor: '#58a6ff', fill: true, backgroundColor: 'rgba(88, 166, 255, 0.1)' }] }, 
-        options: opt 
-    });
+    // KOMENTAR: Inisialisasi grafik menggunakan data yang tersimpan di memory global
+    speedChart = new Chart(ctxS, { type: 'line', data: { labels: Array(30).fill(''), datasets: [{ data: [...speedHistory], borderColor: '#d29922', fill: true, backgroundColor: 'rgba(210, 153, 34, 0.1)' }] }, options: opt });
+    currentChart = new Chart(ctxC, { type: 'line', data: { labels: Array(30).fill(''), datasets: [{ data: [...currentHistory], borderColor: '#58a6ff', fill: true, backgroundColor: 'rgba(88, 166, 255, 0.1)' }] }, options: opt });
 }
 
 function updateUI(data) {
     if (!isConnected) return;
 
-    // 1. UPDATE RIWAYAT DATA (Latar Belakang)
+    // 1. UPDATE DATA MEMORY (Selalu berjalan di latar belakang)
     speedHistory.push(data.speed || 0);
     currentHistory.push(Math.abs(data.amps || 0));
     speedHistory.shift();
     currentHistory.shift();
 
-    // 2. UPDATE VISUAL GRAFIK (Hanya jika di halaman Trip)
+    // 2. UPDATE VISUAL GRAFIK (Hanya jika halaman Trip sedang dibuka)
     if (speedChart && currentChart) {
         speedChart.data.datasets[0].data = [...speedHistory];
         currentChart.data.datasets[0].data = [...currentHistory];
@@ -74,14 +65,27 @@ function updateUI(data) {
         currentChart.update('none');
     }
 
-    // 3. UPDATE LOGS (Halaman Logs)
+    // 3. UPDATE LOGS STREAM (Selalu update jika halaman logs terbuka)
     const logBox = document.getElementById('log-box');
     if (logBox) {
-        const jsonStr = JSON.stringify(data);
-        logBox.innerText = jsonStr + "\n" + logBox.innerText.substring(0, 1000);
+        const timestamp = new Date().toLocaleTimeString();
+        logBox.innerText = `[${timestamp}] ${JSON.stringify(data)}\n` + logBox.innerText.substring(0, 2000);
     }
 
-    // 4. UPDATE GAUGE & DATA LAINNYA
+    // 4. FIX: UPDATE MODE BERKENDARA
+    const modeEl = document.getElementById('mode-text');
+    if (modeEl && data.mode) {
+        modeEl.innerText = data.mode;
+        const m = data.mode.toUpperCase();
+        // Logika warna badge mode (Sinkron V15.8)
+        if (m === "SPORT") modeEl.style.backgroundColor = "#d29922";
+        else if (m === "DRIVE") modeEl.style.backgroundColor = "#238636";
+        else if (m === "REVERSE") modeEl.style.backgroundColor = "#bc8cff";
+        else if (m === "PARK" || m === "PARKING") modeEl.style.backgroundColor = "#30363d";
+        else modeEl.style.backgroundColor = "#f85149";
+    }
+
+    // 5. UPDATE GAUGE & DASHBOARD
     const rpm = data.rpm || 0;
     const circle = document.getElementById('gauge-circle');
     if (circle) {
@@ -92,12 +96,11 @@ function updateUI(data) {
         if (ball) {
             ball.style.display = "block";
             const rad = (deg + 180 - 90) * (Math.PI / 180);
-            const x = Math.cos(rad) * 100; 
-            const y = Math.sin(rad) * 100;
-            ball.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+            ball.style.transform = `translate(calc(-50% + ${Math.cos(rad)*100}px), calc(-50% + ${Math.sin(rad)*100}px))`;
         }
     }
 
+    // 6. UPDATE DATA GLOBAL (Sesuai ID di HTML)
     const vals = {
         'speed': data.speed || 0, 'rpm-val': rpm, 'soc-dash': (data.soc || 0) + "%",
         'soc-batt': (data.soc || 0) + "%", 'soh-val': (data.health?.soh || 0) + "%",
@@ -114,6 +117,8 @@ function updateUI(data) {
         if (el) el.innerText = val;
     }
 }
+
+// ... (Sisa fungsi Bluetooth, setStatus, dan generateCells tetap sama) ...
 
 async function toggleConnect() {
     if (isConnected) { if (bluetoothDevice) await bluetoothDevice.gatt.disconnect(); } else {
@@ -133,7 +138,7 @@ async function toggleConnect() {
             rxChar = await service.getCharacteristic(RX_CHAR_UUID);
             bluetoothDevice.addEventListener('gattserverdisconnected', () => setStatus(false));
             setStatus(true);
-        } catch (e) { alert("Bluetooth Error: " + e); }
+        } catch (e) { alert("Pesan: " + e); }
     }
 }
 
@@ -142,11 +147,8 @@ function setStatus(s) { isConnected = s; const b = document.getElementById('conn
 function generateCells() {
     const grid = document.getElementById('cell-grid');
     if (!grid || grid.innerHTML !== "") return;
-    for (let i = 1; i <= 23; i++) grid.innerHTML += `<div class=\"cell-card\"><small class=\"cell-id\">C${i}</small><b id=\"c${i}-v\">0.000V</b></div>`;
+    for (let i = 1; i <= 23; i++) grid.innerHTML += `<div class="cell-card"><small class="cell-id">C${i}</small><b id="c${i}-v">0.000V</b></div>`;
 }
 
 window.addEventListener('DOMContentLoaded', () => loadPage('dash'));
-setInterval(() => { 
-    const clock = document.getElementById('clock');
-    if (clock) clock.innerText = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); 
-}, 1000);
+setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }, 1000);
