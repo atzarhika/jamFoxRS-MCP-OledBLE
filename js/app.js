@@ -121,11 +121,18 @@ function updateUI(data) {
 // ... (Sisa fungsi Bluetooth, setStatus, dan generateCells tetap sama) ...
 
 async function toggleConnect() {
-    if (isConnected) { if (bluetoothDevice) await bluetoothDevice.gatt.disconnect(); } else {
+    if (isConnected) { 
+        if (bluetoothDevice) await bluetoothDevice.gatt.disconnect(); 
+    } else {
         try {
-            bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ name: 'Votol_BLE' }], optionalServices: [SERVICE_UUID] });
+            bluetoothDevice = await navigator.bluetooth.requestDevice({ 
+                filters: [{ name: 'Votol_BLE' }], 
+                optionalServices: [SERVICE_UUID] 
+            });
             const server = await bluetoothDevice.gatt.connect();
             const service = await server.getPrimaryService(SERVICE_UUID);
+
+            // SETUP NOTIFIKASI (Terima data dari ESP32)
             txChar = await service.getCharacteristic(TX_CHAR_UUID);
             await txChar.startNotifications();
             txChar.addEventListener('characteristicvaluechanged', (e) => {
@@ -135,13 +142,46 @@ async function toggleConnect() {
                     lines.forEach(l => { if(l.trim()) try { updateUI(JSON.parse(l)); } catch(e){} });
                 }
             });
+
+            // SETUP WRITE CHARACTERISTIC (Kirim data ke ESP32)
+            // Ini adalah bagian yang sebelumnya hilang atau tidak terhubung ke tombol
             rxChar = await service.getCharacteristic(RX_CHAR_UUID);
+
             bluetoothDevice.addEventListener('gattserverdisconnected', () => setStatus(false));
             setStatus(true);
-        } catch (e) { alert("Pesan: " + e); }
+        } catch (e) { alert("Koneksi Gagal: " + e); }
     }
 }
 
+// FUNGSI UPDATE SPLASHSCREEN (Sinkron dengan firmware startsWith("SPLASH,"))
+async function sendSplash() {
+    if (!rxChar) { alert("Hubungkan Bluetooth terlebih dahulu!"); return; }
+    const val = document.getElementById('splashInput').value.trim();
+    if (val) {
+        // Firmware V15.8 membaca perintah "SPLASH,isi_teks"
+        const encoder = new TextEncoder();
+        await rxChar.writeValue(encoder.encode(`SPLASH,${val}`));
+        alert("Perintah Update Splash dikirim: " + val);
+    } else {
+        alert("Nama splash tidak boleh kosong!");
+    }
+}
+
+// FUNGSI SYNC TIME (Sinkron dengan firmware sscanf "TIME,%d,%d,%d,%d,%d,%d")
+async function syncTime() {
+    if (!rxChar) { alert("Hubungkan Bluetooth terlebih dahulu!"); return; }
+    const n = new Date();
+    // Format yang diminta firmware: TIME,YYYY,MM,DD,HH,MM,SS
+    const timeCmd = `TIME,${n.getFullYear()},${n.getMonth()+1},${n.getDate()},${n.getHours()},${n.getMinutes()},${n.getSeconds()}`;
+    
+    const encoder = new TextEncoder();
+    try {
+        await rxChar.writeValue(encoder.encode(timeCmd));
+        alert("Waktu Berhasil Disinkronkan ke RTC Motor!");
+    } catch (e) {
+        alert("Gagal Sinkronisasi: " + e);
+    }
+}
 function setStatus(s) { isConnected = s; const b = document.getElementById('connectBtn'); if(b) { b.innerText = s ? "DISCONNECT" : "CONNECT"; b.style.background = s ? "#f85149" : "#58a6ff"; } document.getElementById('conn-status').innerText = s ? "● ONLINE" : "● OFFLINE"; }
 
 function generateCells() {
