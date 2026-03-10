@@ -13,6 +13,26 @@ let currentHistory = Array(30).fill(0);
 let speedChart = null;
 let currentChart = null;
 
+// --- VARIABEL BARU UNTUK TELEMETRI ---
+let isRecording = false;
+let recordStartTime = 0;
+let recordInterval;
+let gpxDataPoints = []; // Menyimpan data di memori sementara
+let currentGPS = { lat: 0, lon: 0, alt: 0 };
+
+// Inisialisasi GPS HP
+if ("geolocation" in navigator) {
+    navigator.geolocation.watchPosition(
+        (pos) => {
+            currentGPS = { lat: pos.coords.latitude, lon: pos.coords.longitude, alt: pos.coords.altitude || 0 };
+            const gpsStatus = document.getElementById('gps-status');
+            if (gpsStatus) gpsStatus.innerText = `GPS: Fixed (${currentGPS.lat.toFixed(4)}, ${currentGPS.lon.toFixed(4)})`;
+        },
+        (err) => console.error("GPS Error:", err),
+        { enableHighAccuracy: true }
+    );
+}
+
 // 1. FUNGSI MUAT HALAMAN (SPA)
 async function loadPage(pageName, element) {
     try {
@@ -58,11 +78,64 @@ function initCharts() {
         options: opt 
     });
 }
+// FUNGSI TOGGLE RECORD
+function toggleRecord() {
+    const btn = document.getElementById('recordBtn');
+    const icon = document.getElementById('record-icon');
+    const timerEl = document.getElementById('record-timer');
+
+    if (!isRecording) {
+        // START RECORDING
+        isRecording = true;
+        gpxDataPoints = [];
+        recordStartTime = Date.now();
+        btn.style.background = "#f85149"; // Merah saat merekam
+        icon.setAttribute("data-lucide", "square"); // Ubah ikon ke stop
+        lucide.createIcons();
+
+        recordInterval = setInterval(() => {
+            const elapsed = Date.now() - recordStartTime;
+            const h = Math.floor(elapsed / 3600000).toString().padStart(2, '0');
+            const m = Math.floor((elapsed % 3600000) / 60000).toString().padStart(2, '0');
+            const s = Math.floor((elapsed % 60000) / 1000).toString().padStart(2, '0');
+            if (timerEl) timerEl.innerText = `${h}:${m}:${s}`;
+        }, 1000);
+    } else {
+        // STOP RECORDING
+        isRecording = false;
+        clearInterval(recordInterval);
+        btn.style.background = "var(--orange)";
+        icon.setAttribute("data-lucide", "circle");
+        lucide.createIcons();
+        if (timerEl) timerEl.innerText = "00:00:00";
+        
+        saveGPX(); // Generate dan unduh file
+    }
+}
+
+// LOGIKA PENGUMPULAN DATA (Disuntikkan ke updateUI)
+function collectTelemetry(votolData) {
+    if (!isRecording) return;
+
+    const point = {
+        lat: currentGPS.lat,
+        lon: currentGPS.lon,
+        ele: currentGPS.alt,
+        time: new Date().toISOString(),
+        speed: votolData.speed || 0,
+        rpm: votolData.rpm || 0,
+        temp: votolData.temps?.motor || 0,
+        soc: votolData.soc || 0,
+        current: Math.abs(votolData.amps || 0)
+    };
+    gpxDataPoints.push(point);
+}
 
 // 3. UPDATE UI DARI DATA BLUETOOTH
 function updateUI(data) {
     if (!isConnected) return;
 
+    collectTelemetry(data);
     // 1. UPDATE DATA MEMORY GRAFIK (Selalu berjalan)
     speedHistory.push(data.speed || 0);
     currentHistory.push(Math.abs(data.amps || 0));
@@ -221,6 +294,43 @@ function generateCells() {
     for (let i = 1; i <= 23; i++) {
         grid.innerHTML += `<div class="cell-card"><small class="cell-id">C${i}</small><b id="c${i}-v">0.000V</b></div>`;
     }
+}
+
+// GENERATE FILE GPX
+function saveGPX() {
+    if (gpxDataPoints.length === 0) { alert("Data kosong, tidak ada yang disimpan."); return; }
+
+    const now = new Date();
+    const fileName = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}.gpx`;
+
+    let gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Votol Dash Pro" xmlns="http://www.topografix.com/GPX/1/1">
+<trk><name>Votol Telemetry Session</name><trkseg>`;
+
+    gpxDataPoints.forEach(p => {
+        gpxContent += `
+<trkpt lat="${p.lat}" lon="${p.lon}">
+    <ele>${p.ele}</ele>
+    <time>${p.time}</time>
+    <extensions>
+        <speed_kmh>${p.speed}</speed_kmh>
+        <motor_rpm>${p.rpm}</motor_rpm>
+        <motor_temp>${p.temp}</motor_temp>
+        <battery_soc>${p.soc}</battery_soc>
+        <current_amps>${p.current}</current_amps>
+    </extensions>
+</trkpt>`;
+    });
+
+    gpxContent += `\n</trkseg></trk></gpx>`;
+
+    const blob = new Blob([gpxContent], { type: 'application/gpx+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 window.addEventListener('DOMContentLoaded', () => loadPage('dash'));

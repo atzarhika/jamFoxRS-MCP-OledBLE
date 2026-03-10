@@ -10,16 +10,48 @@
     </div>
 
     <div class="info-grid-3">
-        <div class="card mini"><i data-lucide="map-pin"></i><span class="label">RANGE</span><b id="range-val">0 km</b></div>
-        <div class="card mini"><i data-lucide="milestone"></i><span class="label">TRIP</span><b id="trip-val">0.0 km</b></div>
-        <div class="card mini"><i data-lucide="battery"></i><span class="label">SOC</span><b id="soc-dash">0%</b></div>
+        <div class="card mini">
+            <i data-lucide="map-pin"></i>
+            <span class="label">EST. RANGE</span>
+            <b id="range-val">0 km</b>
+        </div>
+        <div class="card mini">
+            <i data-lucide="milestone"></i>
+            <span class="label">TRIP</span>
+            <b id="trip-val">0.0 km</b>
+        </div>
+        <div class="card mini">
+            <i data-lucide="battery"></i>
+            <span class="label">SOC</span>
+            <b id="soc-dash">0%</b>
+        </div>
         
         <div class="card" style="grid-column: span 3;">
             <div class="temp-grid-3">
-                <div class="stat-box"><small class="label">ECU</small><b id="t-ecu" style="color:var(--orange); font-size: 20px;">0°</b></div>
-                <div class="stat-box"><small class="label">MOTOR</small><b id="t-motor" style="color:var(--orange); font-size: 20px;">0°</b></div>
-                <div class="stat-box"><small class="label">BATT</small><b id="t-batt" style="color:var(--orange); font-size: 20px;">0°</b></div>
+                <div class="stat-box">
+                    <small class="label">ECU</small>
+                    <b id="t-ecu" style="color:var(--orange); font-size: 20px;">0°</b>
+                </div>
+                <div class="stat-box">
+                    <small class="label">MOTOR</small>
+                    <b id="t-motor" style="color:var(--orange); font-size: 20px;">0°</b>
+                </div>
+                <div class="stat-box">
+                    <small class="label">BATT</small>
+                    <b id="t-batt" style="color:var(--orange); font-size: 20px;">0°</b>
+                </div>
             </div>
         </div>
+    </div> <div class="card" style="border: 1px solid var(--orange); margin-top: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <span class="label">GPX TELEMETRY RECORD</span>
+                <div id="record-timer" style="font-family: monospace; color: var(--orange); font-weight: bold; font-size: 20px;">00:00:00</div>
+            </div>
+            <button id="recordBtn" onclick="toggleRecord()" style="background: var(--orange); border: none; border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.3s;">
+                <i data-lucide="circle" id="record-icon" style="fill: white; color: white;"></i>
+            </button>
+        </div>
+        <div id="gps-status" style="font-size: 9px; color: var(--text-dim); margin-top: 8px;">GPS: Waiting for signal...</div>
     </div>
 </section>
