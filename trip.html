@@ -8,15 +8,15 @@
         </div>
     </div>
 
-    <div class="card history-card">
+    <div class="card" style="overflow: hidden;">
         <span class="label">History (30s)</span>
-        <div class="chart-row">
-            <div class="chart-wrapper">
-                <small class="chart-tag" style="color: var(--orange);">SPEED</small>
+        <div style="display: flex; justify-content: space-between; gap: 10px; height: 120px; margin-top: 15px; width: 100%;">
+            <div style="flex: 1; position: relative; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 5px; min-width: 0;">
+                <small style="position: absolute; top: 2px; left: 5px; font-size: 8px; color: var(--orange); font-weight: bold; z-index: 5;">SPEED</small>
                 <canvas id="speedChart"></canvas>
             </div>
-            <div class="chart-wrapper">
-                <small class="chart-tag" style="color: var(--cyan);">CURRENT</small>
+            <div style="flex: 1; position: relative; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 5px; min-width: 0;">
+                <small style="position: absolute; top: 2px; left: 5px; font-size: 8px; color: var(--cyan); font-weight: bold; z-index: 5;">CURRENT</small>
                 <canvas id="currentChart"></canvas>
             </div>
         </div>
