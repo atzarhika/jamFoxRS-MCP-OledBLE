@@ -306,21 +306,25 @@ function generateCells() {
 }
 
 // BARU: Fungsi Save GPX yang sudah dimodifikasi untuk Insta360 (Format Garmin)
+// REVISI FINAL: Fungsi Save GPX agar Kompatibel dengan Garmin VIRB & Insta360
 function saveGPX() {
     if (gpxDataPoints.length === 0) { alert("Data kosong!"); return; }
 
     const now = new Date();
     const fileName = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}.gpx`;
 
-    // HEADER GPX dengan Namespace Garmin
+    // HEADER: Menambahkan Namespace resmi Garmin secara lengkap
     let gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="Votol Dash Pro" 
   xmlns="http://www.topografix.com/GPX/1/1" 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd"
   xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v2">
 <trk><name>Votol Telemetry Session</name><trkseg>`;
 
     gpxDataPoints.forEach(p => {
-        // Konversi km/h ke m/s (Standar Garmin)
+        // KONVERSI: Garmin/Insta360 membaca kecepatan dalam Meter per Detik (m/s)
+        // Rumus: km/h dibagi 3.6
         const speedMS = (p.speed / 3.6).toFixed(2);
 
         gpxContent += `
@@ -329,12 +333,7 @@ function saveGPX() {
     <time>${p.time}</time>
     <extensions>
         <gpxtpx:TrackPointExtension>
-            <gpxtpx:hr>${p.soc}</gpxtpx:hr> <gpxtpx:cad>${Math.round(p.rpm / 10)}</gpxtpx:cad> <gpxtpx:speed>${speedMS}</gpxtpx:speed> </gpxtpx:TrackPointExtension>
-        <speed_kmh>${p.speed}</speed_kmh>
-        <motor_rpm>${p.rpm}</motor_rpm>
-        <motor_temp>${p.temp}</motor_temp>
-        <battery_soc>${p.soc}</battery_soc>
-        <current_amps>${p.current}</current_amps>
+            <gpxtpx:speed>${speedMS}</gpxtpx:speed> <gpxtpx:hr>${p.soc}</gpxtpx:hr>       <gpxtpx:cad>${Math.round(p.rpm / 10)}</gpxtpx:cad> </gpxtpx:TrackPointExtension>
     </extensions>
 </trkpt>`;
     });
