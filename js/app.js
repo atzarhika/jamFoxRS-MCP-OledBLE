@@ -312,7 +312,7 @@ function saveGPX() {
     const now = new Date();
     const fileName = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}.gpx`;
 
-    // HEADER: Menggunakan Namespace Garmin V2 yang paling stabil
+    // HEADER: Menggunakan skema Garmin lengkap untuk mendukung kalkulasi G-Force
     let gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="Votol Dash Pro" 
   xmlns="http://www.topografix.com/GPX/1/1"
@@ -320,19 +320,15 @@ function saveGPX() {
 <trk><name>Votol Telemetry Session</name><trkseg>`;
 
     gpxDataPoints.forEach(p => {
-        // Konversi Speed Votol ke m/s untuk standar Garmin
-        const speedMS = (p.speed / 3.6).toFixed(2);
+        // Konversi Speed ke m/s dengan presisi tinggi untuk mengurangi delay
+        const speedMS = (p.speed / 3.6).toFixed(3);
 
         gpxContent += `
 <trkpt lat="${p.lat}" lon="${p.lon}">
-    <ele>${p.ele}</ele>
-    <time>${p.time}</time>
+    <ele>${p.ele.toFixed(2)}</ele> <time>${p.time}</time>
     <extensions>
         <gpxtpx:TrackPointExtension>
             <gpxtpx:speed>${speedMS}</gpxtpx:speed> <gpxtpx:hr>${p.rpm}</gpxtpx:hr>       <gpxtpx:cad>${p.soc}</gpxtpx:cad>      </gpxtpx:TrackPointExtension>
-        <votol_speed_kmh>${p.speed}</votol_speed_kmh>
-        <motor_temp>${p.temp}</motor_temp>
-        <battery_soc>${p.soc}</battery_soc>
     </extensions>
 </trkpt>`;
     });
