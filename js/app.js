@@ -282,10 +282,9 @@ for (const [id, val] of Object.entries(bmsVals)) {
 // Update fungsi generateCells agar menyertakan elemen Bar
 function generateCells() {
     const grid = document.getElementById('cell-grid');
-    // Mencegah duplikasi jika sudah ada elemen di dalamnya
-    if (!grid || grid.children.length > 0) return;
-
+    if (!grid || grid.innerHTML !== "") return;
     for (let i = 1; i <= 23; i++) {
+        // PERBAIKAN: Tambahkan elemen bar di dalam loop ini
         grid.innerHTML += `
             <div class="cell-card">
                 <div class="cell-info">
