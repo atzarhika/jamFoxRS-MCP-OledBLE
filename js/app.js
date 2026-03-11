@@ -7,18 +7,19 @@ let isConnected = false;
 let bluetoothDevice, rxChar, txChar;
 let rxBuffer = "";
 
-// Memori Grafik Global (Agar data tidak hilang saat pindah halaman)
+// Memori Grafik Global
 let speedHistory = Array(30).fill(0);
 let currentHistory = Array(30).fill(0);
 let speedChart = null;
 let currentChart = null;
 
-// --- VARIABEL BARU UNTUK TELEMETRI ---
+// --- VARIABEL TELEMETRI ---
 let isRecording = false;
 let recordStartTime = 0;
 let recordInterval;
-let gpxDataPoints = []; // Menyimpan data di memori sementara
+let gpxDataPoints = []; 
 let currentGPS = { lat: 0, lon: 0, alt: 0 };
+let wakeLock = null; // BARU: Untuk menyimpan status layar terjaga
 
 // Inisialisasi GPS HP
 if ("geolocation" in navigator) {
@@ -33,6 +34,18 @@ if ("geolocation" in navigator) {
     );
 }
 
+// BARU: Fungsi untuk meminta browser agar layar tetap menyala
+async function requestWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            console.log('Wake Lock aktif: Layar akan tetap menyala');
+        }
+    } catch (err) {
+        console.error(`${err.name}, ${err.message}`);
+    }
+}
+
 // 1. FUNGSI MUAT HALAMAN (SPA)
 async function loadPage(pageName, element) {
     try {
@@ -44,7 +57,6 @@ async function loadPage(pageName, element) {
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
         if(element) element.classList.add('active');
         
-        // Reset referensi chart agar bisa dibuat ulang di canvas baru
         speedChart = null;
         currentChart = null;
 
@@ -78,19 +90,22 @@ function initCharts() {
         options: opt 
     });
 }
+
 // FUNGSI TOGGLE RECORD
-function toggleRecord() {
+async function toggleRecord() { // BARU: Ditambah 'async' karena ada requestWakeLock
     const btn = document.getElementById('recordBtn');
     const icon = document.getElementById('record-icon');
     const timerEl = document.getElementById('record-timer');
 
     if (!isRecording) {
         // START RECORDING
+        await requestWakeLock(); // BARU: Minta layar menyala saat rekam dimulai
+        
         isRecording = true;
         gpxDataPoints = [];
         recordStartTime = Date.now();
-        btn.style.background = "#f85149"; // Merah saat merekam
-        icon.setAttribute("data-lucide", "square"); // Ubah ikon ke stop
+        btn.style.background = "#f85149";
+        icon.setAttribute("data-lucide", "square");
         lucide.createIcons();
 
         recordInterval = setInterval(() => {
@@ -104,19 +119,24 @@ function toggleRecord() {
         // STOP RECORDING
         isRecording = false;
         clearInterval(recordInterval);
+        
+        // BARU: Lepaskan Wake Lock agar layar bisa mati normal kembali
+        if (wakeLock !== null) {
+            wakeLock.release().then(() => wakeLock = null);
+        }
+
         btn.style.background = "var(--orange)";
         icon.setAttribute("data-lucide", "circle");
         lucide.createIcons();
         if (timerEl) timerEl.innerText = "00:00:00";
         
-        saveGPX(); // Generate dan unduh file
+        saveGPX();
     }
 }
 
-// LOGIKA PENGUMPULAN DATA (Disuntikkan ke updateUI)
+// LOGIKA PENGUMPULAN DATA
 function collectTelemetry(votolData) {
     if (!isRecording) return;
-
     const point = {
         lat: currentGPS.lat,
         lon: currentGPS.lon,
@@ -134,15 +154,13 @@ function collectTelemetry(votolData) {
 // 3. UPDATE UI DARI DATA BLUETOOTH
 function updateUI(data) {
     if (!isConnected) return;
-
     collectTelemetry(data);
-    // 1. UPDATE DATA MEMORY GRAFIK (Selalu berjalan)
+
     speedHistory.push(data.speed || 0);
     currentHistory.push(Math.abs(data.amps || 0));
     speedHistory.shift();
     currentHistory.shift();
 
-    // 2. UPDATE VISUAL GRAFIK (Hanya jika di halaman Trip)
     if (speedChart && currentChart) {
         speedChart.data.datasets[0].data = [...speedHistory];
         currentChart.data.datasets[0].data = [...currentHistory];
@@ -150,20 +168,17 @@ function updateUI(data) {
         currentChart.update('none');
     }
 
-    // 3. FIX: UPDATE MODE BERKENDARA (Menggunakan data.mode dari firmware)
     const modeEl = document.getElementById('mode-text');
     if (modeEl && data.mode) {
         modeEl.innerText = data.mode;
         const m = data.mode.toUpperCase();
-        // Penyesuaian warna sesuai status mode berkendara 
         if (m === "SPORT") modeEl.style.backgroundColor = "#d29922";
         else if (m === "DRIVE") modeEl.style.backgroundColor = "#238636";
         else if (m === "REVERSE") modeEl.style.backgroundColor = "#bc8cff";
         else if (m === "PARK") modeEl.style.backgroundColor = "#30363d";
-        else modeEl.style.backgroundColor = "#f85149"; // BRAKE/STAND
+        else modeEl.style.backgroundColor = "#f85149";
     }
 
-    // 4. UPDATE GAUGE RPM & SPEED
     const rpm = data.rpm || 0;
     const speedEl = document.getElementById('speed');
     if (speedEl) speedEl.innerText = data.speed || 0;
@@ -187,13 +202,10 @@ function updateUI(data) {
         }
     }
 
-    // 5. FIX: AKSES DATA TRIP & RANGE (Nested Object) 
-    // Firmware mengirim: "trip":{"km":x.x, "avg":x.x, "range":x}
     const tripData = data.trip || {};
-    
     const vals = {
-        'range-val': (tripData.range || 0) + " km",      // Mengambil dari data.trip.range
-        'trip-val': (tripData.km || 0).toFixed(1) + " km", // Mengambil dari data.trip.km
+        'range-val': (tripData.range || 0) + " km",
+        'trip-val': (tripData.km || 0).toFixed(1) + " km",
         'soc-dash': (data.soc || 0) + "%",
         'soc-batt': (data.soc || 0) + "%",
         'soh-val': (data.health?.soh || 0) + "%",
@@ -203,7 +215,6 @@ function updateUI(data) {
         't-ecu': (data.temps?.ctrl || 0) + "°",
         't-motor': (data.temps?.motor || 0) + "°",
         't-batt': (data.temps?.batt || 0) + "°",
-        // ID besar di halaman Trip Analytics
         'trip-dist-large': (tripData.km || 0).toFixed(1) + " km",
         'avg-wh': (tripData.avg || 0).toFixed(1),
         'est-range-trip': (tripData.range || 0) + " km"
@@ -214,7 +225,6 @@ function updateUI(data) {
         if (el) el.innerText = val;
     }
 
-    // 6. UPDATE SOC BAR & LOGS
     const bar = document.getElementById('soc-bar');
     if (bar) bar.style.width = (data.soc || 0) + "%";
 
@@ -223,7 +233,6 @@ function updateUI(data) {
         logBox.innerText = JSON.stringify(data) + "\n" + logBox.innerText.substring(0, 1000);
     }
 
-    // 7. UPDATE BMS CELLS
     if (data.cells) {
         data.cells.forEach((mv, i) => {
             const el = document.getElementById(`c${i+1}-v`);
@@ -261,7 +270,7 @@ async function toggleConnect() {
     }
 }
 
-// 5. SETTINGS ACTIONS (Update Splash & Sync Time)
+// 5. SETTINGS ACTIONS
 async function sendSplash() {
     if (!rxChar) { alert("Hubungkan Bluetooth!"); return; }
     const val = document.getElementById('splashInput').value.trim();
@@ -296,23 +305,31 @@ function generateCells() {
     }
 }
 
-// GENERATE FILE GPX
+// BARU: Fungsi Save GPX yang sudah dimodifikasi untuk Insta360 (Format Garmin)
 function saveGPX() {
-    if (gpxDataPoints.length === 0) { alert("Data kosong, tidak ada yang disimpan."); return; }
+    if (gpxDataPoints.length === 0) { alert("Data kosong!"); return; }
 
     const now = new Date();
     const fileName = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}.gpx`;
 
+    // HEADER GPX dengan Namespace Garmin
     let gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Votol Dash Pro" xmlns="http://www.topografix.com/GPX/1/1">
+<gpx version="1.1" creator="Votol Dash Pro" 
+  xmlns="http://www.topografix.com/GPX/1/1" 
+  xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v2">
 <trk><name>Votol Telemetry Session</name><trkseg>`;
 
     gpxDataPoints.forEach(p => {
+        // Konversi km/h ke m/s (Standar Garmin)
+        const speedMS = (p.speed / 3.6).toFixed(2);
+
         gpxContent += `
 <trkpt lat="${p.lat}" lon="${p.lon}">
     <ele>${p.ele}</ele>
     <time>${p.time}</time>
     <extensions>
+        <gpxtpx:TrackPointExtension>
+            <gpxtpx:hr>${p.soc}</gpxtpx:hr> <gpxtpx:cad>${Math.round(p.rpm / 10)}</gpxtpx:cad> <gpxtpx:speed>${speedMS}</gpxtpx:speed> </gpxtpx:TrackPointExtension>
         <speed_kmh>${p.speed}</speed_kmh>
         <motor_rpm>${p.rpm}</motor_rpm>
         <motor_temp>${p.temp}</motor_temp>
