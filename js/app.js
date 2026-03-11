@@ -204,34 +204,48 @@ function updateUI(data) {
 
     // UPDATE DATA BMS & CELL
     if (data.cells) {
-        const cellVolts = data.cells.map(mv => mv / 1000);
-        const maxV = Math.max(...cellVolts);
-        const minV = Math.min(...cellVolts);
-        const delta = maxV - minV;
+    let cellVolts = data.cells.map(mv => mv / 1000);
+    let maxV = Math.max(...cellVolts);
+    let minV = Math.min(...cellVolts);
+    let delta = maxV - minV;
 
-        const deltaEl = document.getElementById('cell-delta');
-        if (deltaEl) deltaEl.innerText = delta.toFixed(3) + "V";
+    // Update Delta Voltase
+    const deltaEl = document.getElementById('cell-delta');
+    if (deltaEl) deltaEl.innerText = delta.toFixed(3) + "V";
 
-        data.cells.forEach((mv, i) => {
-            const vol = mv / 1000;
-            const elText = document.getElementById(`c${i+1}-v`);
-            const elBar = document.getElementById(`c${i+1}-bar`);
+    data.cells.forEach((mv, i) => {
+        const vol = mv / 1000;
+        const elText = document.getElementById(`c${i+1}-v`);
+        const elBar = document.getElementById(`c${i+1}-bar`);
+        
+        if (elText) elText.innerText = vol.toFixed(3) + "V";
+        
+        if (elBar) {
+            // Kalkulasi Bar (LiFePO4: 2.5V - 3.65V)
+            let pct = ((vol - 2.5) / (3.65 - 2.5)) * 100;
+            pct = Math.max(0, Math.min(100, pct));
+            elBar.style.width = pct + "%";
             
-            if (elText) elText.innerText = vol.toFixed(3) + "V";
-            
-            if (elBar) {
-                // Kalkulasi Bar (2.5V - 3.65V)
-                let pct = ((vol - 2.5) / (3.65 - 2.5)) * 100;
-                pct = Math.max(0, Math.min(100, pct));
-                elBar.style.width = pct + "%";
-                
-                // Highlight High/Low Cell
-                if (vol === maxV) elBar.style.backgroundColor = "#d29922"; // Oranye (Max)
-                else if (vol === minV) elBar.style.backgroundColor = "#f85149"; // Merah (Min)
-                else elBar.style.backgroundColor = "#3fb950"; // Hijau (Normal)
-            }
-        });
-    }
+            // Highlight Max/Min
+            if (vol === maxV) elBar.style.backgroundColor = "#d29922"; // Oranye
+            else if (vol === minV) elBar.style.backgroundColor = "#f85149"; // Merah
+            else elBar.style.backgroundColor = "#3fb950"; // Hijau
+        }
+    });
+}
+
+// Tambahkan mapping data kapasitas di dalam objek vals updateUI:
+const bmsVals = {
+    'cycle-val': data.health?.cycles || 0,
+    'cap-rem': (data.health?.rem_cap || 0).toFixed(1) + " Ah",
+    'cap-full': (data.health?.full_cap || 0).toFixed(1) + " Ah",
+    'bms-status': data.amps > 0.5 ? "CHARGING" : (data.amps < -0.5 ? "DISCHARGE" : "STANDBY")
+};
+
+for (const [id, val] of Object.entries(bmsVals)) {
+    const el = document.getElementById(id);
+    if (el) el.innerText = val;
+}
 
     // Update Semua Nilai Teks
     const tripData = data.trip || {};
@@ -268,15 +282,19 @@ function updateUI(data) {
 // Update fungsi generateCells agar menyertakan elemen Bar
 function generateCells() {
     const grid = document.getElementById('cell-grid');
-    if (!grid || grid.innerHTML !== "") return;
+    // Mencegah duplikasi jika sudah ada elemen di dalamnya
+    if (!grid || grid.children.length > 0) return;
+
     for (let i = 1; i <= 23; i++) {
         grid.innerHTML += `
             <div class="cell-card">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <div class="cell-info">
                     <small class="cell-id">C${i}</small>
-                    <b id="c${i}-v" style="font-size:12px;">0.000V</b>
+                    <b id="c${i}-v">0.000V</b>
                 </div>
-                <div class="cell-bar-bg"><div id="c${i}-bar" class="cell-bar-fill"></div></div>
+                <div class="cell-bar-bg">
+                    <div id="c${i}-bar" class="cell-bar-fill"></div>
+                </div>
             </div>`;
     }
 }
