@@ -152,10 +152,13 @@ function collectTelemetry(votolData) {
 }
 
 // 3. UPDATE UI DARI DATA BLUETOOTH
+// ... (Bagian atas file app.js tetap sama hingga fungsi updateUI) ...
+
 function updateUI(data) {
     if (!isConnected) return;
     collectTelemetry(data);
 
+    // Update Memori Grafik
     speedHistory.push(data.speed || 0);
     currentHistory.push(Math.abs(data.amps || 0));
     speedHistory.shift();
@@ -165,9 +168,9 @@ function updateUI(data) {
         speedChart.data.datasets[0].data = [...speedHistory];
         currentChart.data.datasets[0].data = [...currentHistory];
         speedChart.update('none');
-        currentChart.update('none');
     }
 
+    // Update Mode Berkendara
     const modeEl = document.getElementById('mode-text');
     if (modeEl && data.mode) {
         modeEl.innerText = data.mode;
@@ -179,10 +182,10 @@ function updateUI(data) {
         else modeEl.style.backgroundColor = "#f85149";
     }
 
+    // Update Dashboard Utama
     const rpm = data.rpm || 0;
     const speedEl = document.getElementById('speed');
     if (speedEl) speedEl.innerText = data.speed || 0;
-    
     const rpmValEl = document.getElementById('rpm-val');
     if (rpmValEl) rpmValEl.innerText = rpm;
 
@@ -191,27 +194,60 @@ function updateUI(data) {
         const deg = Math.min((rpm / 1600) * 360, 360);
         circle.style.setProperty('--deg', `${deg}deg`);
         circle.style.background = `radial-gradient(var(--card-bg) 64%, transparent 66%), conic-gradient(from 180deg, var(--cyan) ${deg}deg, #21262d 0deg)`;
-        
         const ball = document.getElementById('glow-ball');
         if (ball) {
             ball.style.display = "block";
             const rad = (deg + 180 - 90) * (Math.PI / 180);
-            const x = Math.cos(rad) * 100;
-            const y = Math.sin(rad) * 100;
-            ball.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+            ball.style.transform = `translate(calc(-50% + ${Math.cos(rad)*100}px), calc(-50% + ${Math.sin(rad)*100}px))`;
         }
     }
 
+    // UPDATE DATA BMS & CELL
+    if (data.cells) {
+        const cellVolts = data.cells.map(mv => mv / 1000);
+        const maxV = Math.max(...cellVolts);
+        const minV = Math.min(...cellVolts);
+        const delta = maxV - minV;
+
+        const deltaEl = document.getElementById('cell-delta');
+        if (deltaEl) deltaEl.innerText = delta.toFixed(3) + "V";
+
+        data.cells.forEach((mv, i) => {
+            const vol = mv / 1000;
+            const elText = document.getElementById(`c${i+1}-v`);
+            const elBar = document.getElementById(`c${i+1}-bar`);
+            
+            if (elText) elText.innerText = vol.toFixed(3) + "V";
+            
+            if (elBar) {
+                // Kalkulasi Bar (2.5V - 3.65V)
+                let pct = ((vol - 2.5) / (3.65 - 2.5)) * 100;
+                pct = Math.max(0, Math.min(100, pct));
+                elBar.style.width = pct + "%";
+                
+                // Highlight High/Low Cell
+                if (vol === maxV) elBar.style.backgroundColor = "#d29922"; // Oranye (Max)
+                else if (vol === minV) elBar.style.backgroundColor = "#f85149"; // Merah (Min)
+                else elBar.style.backgroundColor = "#3fb950"; // Hijau (Normal)
+            }
+        });
+    }
+
+    // Update Semua Nilai Teks
     const tripData = data.trip || {};
+    const healthData = data.health || {};
     const vals = {
         'range-val': (tripData.range || 0) + " km",
         'trip-val': (tripData.km || 0).toFixed(1) + " km",
         'soc-dash': (data.soc || 0) + "%",
         'soc-batt': (data.soc || 0) + "%",
-        'soh-val': (data.health?.soh || 0) + "%",
+        'soh-val': (healthData.soh || 0) + "%",
         'v-val': (data.volts || 0).toFixed(1) + "V",
         'a-val': (data.amps || 0).toFixed(1) + "A",
-        'w-val': Math.abs((data.volts || 0) * (data.amps || 0)).toFixed(0) + "W",
+        'cycle-val': healthData.cycles || 0,
+        'cap-rem': (healthData.rem_cap || 0).toFixed(1) + " Ah",
+        'cap-full': (healthData.full_cap || 0).toFixed(1) + " Ah",
+        'bms-status': data.amps > 0.5 ? "CHARGING" : (data.amps < -0.5 ? "DISCHARGE" : "STANDBY"),
         't-ecu': (data.temps?.ctrl || 0) + "°",
         't-motor': (data.temps?.motor || 0) + "°",
         't-batt': (data.temps?.batt || 0) + "°",
@@ -227,17 +263,21 @@ function updateUI(data) {
 
     const bar = document.getElementById('soc-bar');
     if (bar) bar.style.width = (data.soc || 0) + "%";
+}
 
-    const logBox = document.getElementById('log-box');
-    if (logBox) {
-        logBox.innerText = JSON.stringify(data) + "\n" + logBox.innerText.substring(0, 1000);
-    }
-
-    if (data.cells) {
-        data.cells.forEach((mv, i) => {
-            const el = document.getElementById(`c${i+1}-v`);
-            if (el) el.innerText = (mv / 1000).toFixed(3) + "V";
-        });
+// Update fungsi generateCells agar menyertakan elemen Bar
+function generateCells() {
+    const grid = document.getElementById('cell-grid');
+    if (!grid || grid.innerHTML !== "") return;
+    for (let i = 1; i <= 23; i++) {
+        grid.innerHTML += `
+            <div class="cell-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <small class="cell-id">C${i}</small>
+                    <b id="c${i}-v" style="font-size:12px;">0.000V</b>
+                </div>
+                <div class="cell-bar-bg"><div id="c${i}-bar" class="cell-bar-fill"></div></div>
+            </div>`;
     }
 }
 

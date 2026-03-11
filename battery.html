@@ -1,33 +1,39 @@
 <section id="battery" class="page-content">
     <div class="card">
-        <span class="label">BATTERY ENERGY (SOC)</span>
+        <span class="label">BMS MONITORING</span>
         <div class="soc-bar-container">
             <div id="soc-bar" class="soc-fill"></div>
         </div>
         
         <div class="stats-row">
-            <div class="stat-box">
-                <small>SOC</small>
-                <b id="soc-batt">0%</b>
-            </div>
-            <div class="stat-box">
-                <small>BH</small>
-                <b id="soh-val">0%</b>
-            </div>
-            <div class="stat-box">
-                <small>Volt</small>
-                <b id="v-val">0.0V</b>
-            </div>
-            <div class="stat-box">
-                <small>Amp</small>
-                <b id="a-val">0.0A</b>
-            </div>
-            <div class="stat-box">
-                <small>Watt</small>
-                <b id="w-val">0W</b>
-            </div>
+            <div class="stat-box"><small>SOC</small><b id="soc-batt">0%</b></div>
+            <div class="stat-box"><small>HEALTH</small><b id="soh-val">0%</b></div>
+            <div class="stat-box"><small>DELTA</small><b id="cell-delta" style="color:var(--orange)">0.000V</b></div>
+        </div>
+        
+        <hr style="border:0; border-top:1px solid #30363d; margin:10px 0;">
+        
+        <div class="stats-row">
+            <div class="stat-box"><small>VOLT</small><b id="v-val">0.0V</b></div>
+            <div class="stat-box"><small>AMP</small><b id="a-val">0.0A</b></div>
+            <div class="stat-box"><small>CYCLES</small><b id="cycle-val">0</b></div>
         </div>
     </div>
 
-    <div id="cell-grid" class="cell-grid"></div>
+    <div class="info-grid-3" style="margin-top:10px;">
+        <div class="card mini">
+            <span class="label">REMAINING</span>
+            <b id="cap-rem" style="font-size:14px;">0 Ah</b>
+        </div>
+        <div class="card mini">
+            <span class="label">CAPACITY</span>
+            <b id="cap-full" style="font-size:14px;">0 Ah</b>
+        </div>
+        <div class="card mini">
+            <span class="label">STATUS</span>
+            <b id="bms-status" style="font-size:14px; color:var(--cyan)">STANDBY</b>
+        </div>
+    </div>
+
+    <div id="cell-grid" class="cell-grid" style="margin-top:10px;"></div>
 </section>

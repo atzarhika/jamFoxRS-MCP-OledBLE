@@ -92,3 +92,39 @@ canvas {
     width: 100% !important;
     height: 100% !important;
 }
+
+/* Update atau Tambahkan Bagian Ini di style.css */
+
+.cell-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); /* Tampilan 2 kolom untuk HP agar lega */
+    gap: 8px;
+}
+
+.cell-card {
+    background: var(--card-bg);
+    border: 1px solid #30363d;
+    padding: 8px 10px;
+    border-radius: 8px;
+}
+
+.cell-bar-bg {
+    width: 100%;
+    height: 4px;
+    background: #21262d;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.cell-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--cyan);
+    transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid #30363d;
+    margin: 10px 0;
+}

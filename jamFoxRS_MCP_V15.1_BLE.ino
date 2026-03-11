@@ -19,7 +19,7 @@
 #include <BLE2902.h>
 
 // ================= KONFIGURASI ALAT =================
-const char* FW_VERSION = "V15.8"; 
+const char* FW_VERSION = "V15.9"; 
 
 // ================= KONFIGURASI PIN =================
 #define SDA_PIN 8       
@@ -306,15 +306,15 @@ void buildJsonInto() {
   char cellsStr[256] = {0}; int cpos = 0;
   for (int i = 0; i < 23; i++) { int remain = sizeof(cellsStr) - cpos; if (remain > 0) cpos += snprintf(cellsStr + cpos, remain, "%u%s", valCells[i], (i < 22) ? "," : ""); }
 
-  // KALKULASI TRIP METER UNTUK DIKIRIM KE WEB (V15.8)
+  // KALKULASI RANGE PINTAR (BMS AWARE V15.9)
   float avg_wh = (trip_km > 0.5) ? (trip_wh / trip_km) : 0.0;
   int est_range = 0;
   if (avg_wh > 1.0) {
-      est_range = (int)((39.6 * soc) / avg_wh); // Menggunakan 39.6 Wh (Kapasitas 55Ah)
-      if (est_range > 130) est_range = 130;     // Dibatasi maksimal 130KM
+      float dynamic_1_percent_wh = (valFullCapacity > 10.0) ? (valFullCapacity * 0.72) : 39.6; 
+      est_range = (int)((dynamic_1_percent_wh * soc) / avg_wh);
+      if (est_range > 130) est_range = 130; 
   }
 
-  // MENYUNTIKKAN DATA TRIP KE DALAM JSON
   bleTxLen = snprintf(bleTxBuf, sizeof(bleTxBuf),
     "{\"rpm\":%d,\"speed\":%d,\"mode\":\"%s\",\"volts\":%.1f,\"amps\":%.1f,\"power\":%.0f,\"soc\":%d,"
     "\"trip\":{\"km\":%.1f,\"avg\":%.1f,\"range\":%d},"
@@ -413,38 +413,44 @@ void updateOLED() {
       float avg_wh = (trip_km > 0.5) ? (trip_wh / trip_km) : 0.0;
       int est_range = 0;
       if (avg_wh > 1.0) {
-          est_range = (int)((39.6 * soc) / avg_wh); // 39.6 Wh = 55Ah
-          if (est_range > 130) est_range = 130;     // Maksimal 130 KM (Hard Cap)
+          float dynamic_1_percent_wh = (valFullCapacity > 10.0) ? (valFullCapacity * 0.72) : 39.6; 
+          est_range = (int)((dynamic_1_percent_wh * soc) / avg_wh);
+          if (est_range > 130) est_range = 130; 
       }
       
       int16_t x1, y1; uint16_t w, h;
+      display.setTextSize(1); display.setCursor(0, 0); display.print("TRIP(KM)"); 
+      String rightHeader = "AVG(Wh/km)"; display.getTextBounds(rightHeader, 0, 0, &x1, &y1, &w, &h); display.setCursor(128 - w, 0); display.print(rightHeader);
+
+      display.setTextSize(2); display.setCursor(0, 8); display.print(trip_km, 1); 
+      String rightValue = String(avg_wh, 1); display.getTextBounds(rightValue, 0, 0, &x1, &y1, &w, &h); display.setCursor(128 - w, 8); display.print(rightValue);
+
       display.setTextSize(1); 
-      display.setCursor(0, 0); display.print("TRIP(KM)"); 
+      String bottomText = "";
+      if (trip_km < 1.0) bottomText = "CALCULATING..."; else bottomText = "EST RANGE: " + String(est_range) + " KM";
+      display.getTextBounds(bottomText, 0, 0, &x1, &y1, &w, &h); display.setCursor((128 - w) / 2, 24); display.print(bottomText);
+      break;
+    }
+    case 6: { 
+      // --- HALAMAN BARU: BATTERY HEALTH & CAPACITY ---
+      int16_t x1, y1; uint16_t w, h;
+      display.setTextSize(1); display.setCursor(0, 0); display.print("HEALTH"); 
       
-      String rightHeader = "AVG(Wh/km)";
+      String rightHeader = "CAPACITY";
       display.getTextBounds(rightHeader, 0, 0, &x1, &y1, &w, &h);
       display.setCursor(128 - w, 0); display.print(rightHeader);
 
       display.setTextSize(2); 
-      display.setCursor(0, 8); display.print(trip_km, 1); 
+      String leftValue = String(valSOH) + "%";
+      display.setCursor(0, 10); display.print(leftValue); 
       
-      String rightValue = String(avg_wh, 1);
+      String rightValue = String(valFullCapacity, 1) + "Ah";
       display.getTextBounds(rightValue, 0, 0, &x1, &y1, &w, &h);
-      display.setCursor(128 - w, 8); display.print(rightValue);
-
-      display.setTextSize(1); 
-      String bottomText = "";
-      if (trip_km < 1.0) {
-          bottomText = "CALCULATING...";
-      } else {
-          bottomText = "EST RANGE: " + String(est_range) + " KM";
-      }
-      
-      display.getTextBounds(bottomText, 0, 0, &x1, &y1, &w, &h);
-      display.setCursor((128 - w) / 2, 24); display.print(bottomText);
+      display.setCursor(128 - w, 10); display.print(rightValue);
       break;
     }
-    case 6: { 
+    case 7: { 
+      // --- SYSTEM INFO SEKARANG PINDAH KE HALAMAN 7 ---
       display.setTextSize(1); display.setCursor(0, 0);  display.print("WIFI: "); display.print(ssid); display.setCursor(0, 8);  display.print("PASS: "); display.print(password);
       display.setCursor(0, 16); display.print("NAME: "); display.print(splashText); display.setCursor(0, 24); display.print("FW  : "); display.print(FW_VERSION); break;
     }
@@ -480,7 +486,7 @@ void loop() {
       if (inSettingsMode) { settingsCursor++; if (settingsCursor > 3) settingsCursor = 0; 
       } else { 
           if (!bleEnabled) { 
-              currentPage++; if (currentPage > 6) currentPage = 1; 
+              currentPage++; if (currentPage > 7) currentPage = 1; // UPDATE MAKSIMAL 7 HALAMAN
           } else { 
               if (currentPage == 1) currentPage = 5; else currentPage = 1; 
           }
@@ -507,7 +513,9 @@ void loop() {
   }
   lastBtnState = btnState;
 
+  // AUTO SLEEP KEMBALI KE HALAMAN 1 JIKA TIDAK ADA TOMBOL DITEKAN 30 DETIK (KECUALI HALAMAN 5)
   if (!inSettingsMode && (now - lastButtonPress > 30000) && currentPage != 1 && currentPage != 5 && !showModePopup && !isCharging && speed_kmh <= 70) { currentPage = 1; }
+  
   if (now - lastDisplayUpdate > 100) { updateOLED(); lastDisplayUpdate = now; }
   delay(5); 
 }
