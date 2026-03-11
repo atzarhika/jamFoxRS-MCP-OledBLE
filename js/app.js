@@ -306,25 +306,21 @@ function generateCells() {
 }
 
 // BARU: Fungsi Save GPX yang sudah dimodifikasi untuk Insta360 (Format Garmin)
-// REVISI FINAL: Fungsi Save GPX agar Kompatibel dengan Garmin VIRB & Insta360
 function saveGPX() {
     if (gpxDataPoints.length === 0) { alert("Data kosong!"); return; }
 
     const now = new Date();
     const fileName = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}.gpx`;
 
-    // HEADER: Menambahkan Namespace resmi Garmin secara lengkap
+    // HEADER: Menggunakan Namespace Garmin V2 yang paling stabil
     let gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="Votol Dash Pro" 
-  xmlns="http://www.topografix.com/GPX/1/1" 
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd"
+  xmlns="http://www.topografix.com/GPX/1/1"
   xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v2">
 <trk><name>Votol Telemetry Session</name><trkseg>`;
 
     gpxDataPoints.forEach(p => {
-        // KONVERSI: Garmin/Insta360 membaca kecepatan dalam Meter per Detik (m/s)
-        // Rumus: km/h dibagi 3.6
+        // Konversi Speed Votol ke m/s untuk standar Garmin
         const speedMS = (p.speed / 3.6).toFixed(2);
 
         gpxContent += `
@@ -333,7 +329,10 @@ function saveGPX() {
     <time>${p.time}</time>
     <extensions>
         <gpxtpx:TrackPointExtension>
-            <gpxtpx:speed>${speedMS}</gpxtpx:speed> <gpxtpx:hr>${p.soc}</gpxtpx:hr>       <gpxtpx:cad>${Math.round(p.rpm / 10)}</gpxtpx:cad> </gpxtpx:TrackPointExtension>
+            <gpxtpx:speed>${speedMS}</gpxtpx:speed> <gpxtpx:hr>${p.rpm}</gpxtpx:hr>       <gpxtpx:cad>${p.soc}</gpxtpx:cad>      </gpxtpx:TrackPointExtension>
+        <votol_speed_kmh>${p.speed}</votol_speed_kmh>
+        <motor_temp>${p.temp}</motor_temp>
+        <battery_soc>${p.soc}</battery_soc>
     </extensions>
 </trkpt>`;
     });
@@ -343,9 +342,7 @@ function saveGPX() {
     const blob = new Blob([gpxContent], { type: 'application/gpx+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    a.click();
+    a.href = url; a.download = fileName; a.click();
     URL.revokeObjectURL(url);
 }
 
