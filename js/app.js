@@ -320,15 +320,18 @@ function saveGPX() {
 <trk><name>Votol Telemetry Session</name><trkseg>`;
 
     gpxDataPoints.forEach(p => {
-        // Konversi Speed ke m/s dengan presisi tinggi untuk mengurangi delay
         const speedMS = (p.speed / 3.6).toFixed(3);
 
         gpxContent += `
 <trkpt lat="${p.lat}" lon="${p.lon}">
-    <ele>${p.ele.toFixed(2)}</ele> <time>${p.time}</time>
+    <ele>${p.ele.toFixed(2)}</ele>
+    <time>${p.time}</time>
     <extensions>
         <gpxtpx:TrackPointExtension>
-            <gpxtpx:speed>${speedMS}</gpxtpx:speed> <gpxtpx:hr>${p.rpm}</gpxtpx:hr>       <gpxtpx:cad>${p.soc}</gpxtpx:cad>      </gpxtpx:TrackPointExtension>
+            <gpxtpx:speed>${speedMS}</gpxtpx:speed>
+            <gpxtpx:hr>${p.rpm}</gpxtpx:hr> <gpxtpx:cad>${p.soc}</gpxtpx:cad> </gpxtpx:TrackPointExtension>
+        <motor_temp>${p.temp}</motor_temp>
+        <current_amps>${p.current}</current_amps>
     </extensions>
 </trkpt>`;
     });

@@ -1,4 +1,4 @@
-# ⚡ DOKUMENTASI : VOTOL Smart Dashboard POLYTRON FOX RS V15.1 Pro (BLE Edition)
+# ⚡ DOKUMENTASI : VOTOL Smart Dashboard POLYTRON FOX RS (BLE Edition)
 
 **Deskripsi Proyek:**
 VOTOL Smart Dashboard adalah instrumen kokpit tambahan berteknologi tinggi untuk motor listrik dengan *controller* VOTOL (khususnya Polytron Fox-R). Alat ini membaca data spesifik pabrikan (Suhu, RPM, Voltase, Arus, hingga Status Per-Cell Baterai BMS) langsung dari jalur CAN Bus menggunakan modul MCP2515.
@@ -92,21 +92,45 @@ Di dalam mode *Settings*, tekan pendek untuk menggeser kursor (`>`), tekan tahan
 
 ## 🚀 4. Cara Menggunakan Web Dashboard (Streaming ke HP)
 
-Fitur paling mutakhir dari V15.1 adalah **VOTOL Web Dashboard**. Anda bisa memantau puluhan data telemetri (termasuk status per-sel baterai) layaknya *scanner* pabrikan, langsung dari *browser* HP Anda tanpa perlu instalasi aplikasi khusus!
+Fitur paling mutakhir adalah **VOTOL Web Dashboard**. Anda bisa memantau puluhan data Can Bus (termasuk status per-sel baterai) layaknya *scanner* pabrikan, dan fitur rekam data telemetry langsung dari *browser* HP Anda tanpa perlu instalas aplikasi khusus untuk edit video reading seperti moto gp!
+
+**🌟 Fitur (Baru):**
+- **Real-time Dashboard**: Monitoring kecepatan (KM/H), RPM, Mode berkendara, dan suhu (ECU, Motor, Baterai).
+- **MotoGP Telemetry Record**: Merekam koordinat GPS HP dan data motor ke dalam file `.gpx` secara sinkron.
+- **Insta360 & Garmin Compatible**: File GPX mendukung overlay otomatis pada Insta360 Studio dan Garmin VIRB Edit.
+- **Battery Management Display**: Visualisasi tegangan per cell (23 cells) secara mendatar dan rapi.
+- **Remote Settings**: Update nama splashscreen motor dan sinkronisasi waktu RTC langsung melalui browser.
+- **Screen Wake Lock**: Menjaga layar HP tetap menyala selama proses perekaman data berlangsung.
 
 **Langkah Penggunaan:**
 1. Nyalakan motor, tekan tahan tombol 5 detik untuk masuk ke menu Settings OLED.
 2. Geser ke opsi `BLE OUT`, lalu tekan tahan 3 detik untuk mengubahnya menjadi **ON**. Alat akan *Restart* untuk memuat modul Bluetooth.
 3. Di HP Android Anda, nyalakan **Bluetooth** dan **Lokasi (GPS)**. *(GPS diwajibkan oleh Google Chrome untuk memindai perangkat BLE)*.
-4. Buka file **`dashboard.html`** yang ada di repositori ini menggunakan aplikasi **Google Chrome** di HP Anda. atau bisa menggunakan halaman https://atzarhika.github.io/jamFoxRS-MCP-OledBLE/
+4. Jika Offline unduh dan Buka file **`dashboard.html`** yang ada di repositori ini menggunakan aplikasi **Google Chrome** di HP Anda. atau jika anda online bisa menggunakan halaman https://atzarhika.github.io/jamFoxRS-MCP-OledBLE/ dengan mengijinkan akses lokasi handphone.
 5. Ketuk tombol **CONNECT** berwarna hijau di layar HP.
 6. Akan muncul *pop-up* izin Chrome dari bawah layar. Pilih perangkat bernama **"Votol_BLE"** lalu ketuk **Pasangkan / Pair**.
 7. Selamat! Layar HP Anda sekarang berubah menjadi kokpit digital *real-time*.
 
-**🌟 Fitur Remote Settings (Baru):**
-Setelah HP terkoneksi, gulir ke bagian paling bawah layar *Dashboard*. Anda akan menemukan panel "Device Settings":
-* **Update Name:** Ketik teks maksimal 10 huruf, lalu klik tombol untuk mengganti layar *Splash Screen* motor secara instan!
-* **Sinkronisasi Jam Alat ke HP:** Klik tombol ini, dan jam di spidometer motor akan otomatis menyamakan dirinya dengan jam di HP Anda detik itu juga!
+## 📊 Integrasi Telemetri
+File GPX yang dihasilkan menggunakan standar Garmin Extensions v2:
+- **Speed**: Menggunakan data asli dari kontroler Votol (Unit: m/s).
+- **Heart Rate (BPM)**: Menampilkan data RPM Motor.
+- **Cadence**: Menampilkan persentase SOC Baterai.
+- **Elevation**: Data ketinggian real-time dari sensor GPS smartphone.
+
+### 📱 Kompatibilitas Editor Video
+| Data Motor | Widget di Editor | Aplikasi |
+| :--- | :--- | :--- |
+| Speed (Votol) | Speedometer / G-Metrix | Insta360 / Garmin VIRB |
+| RPM Motor | Heart Rate (BPM) | Insta360 / Garmin VIRB |
+| SOC Baterai | Cadence | Insta360 / Garmin VIRB |
+| Arus (Amps) | Custom Data | Dashware |
+
+## 💻 Teknologi
+- **Frontend**: HTML5, CSS3 (Flexbox/Grid), JavaScript (Vanilla).
+- **Icons**: Lucide Icons.
+- **Charts**: Chart.js (untuk riwayat 30 detik).
+- **Communication**: Web Bluetooth API.
 ---
 
 ## 🔧 5. Pemecahan Masalah Umum (Troubleshooting)
@@ -147,10 +171,69 @@ Di kolom teks Serial Monitor, ketikkan perintah dengan format berikut (tanpa spa
 3. Cek di **Halaman 5 (System Info)** pada layar OLED untuk memastikan data sudah terganti.
 
 ---
-## Anda juga bisa ***mengganti tulisan Splash Screen***
+## Anda juga bisa **mengganti tulisan Splash Screen**
 
 dengan perintah: 
 `SPLASH,NamaAnda` maksimal 10 huruf).*
+
+---
+***TUTORIAL FLASH KODE ke ESP32-C3 MINI***
+---
+
+### 1. Persiapan Software (Arduino IDE)
+
+Jika belum, instal Board Manager untuk ESP32:
+
+* Buka Arduino IDE, pergi ke **File > Preferences**.
+* Pada bagian **Additional Boards Manager URLs**, masukkan:
+`https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
+* Pergi ke **Tools > Board > Boards Manager**, cari **ESP32C3 Dev Module**.
+
+### 2. Instalasi Library yang Dibutuhkan
+
+Berdasarkan file `.ino` kamu, berikut adalah library yang **wajib** diinstal melalui **Tools > Manage Libraries**:
+
+| Nama Library | Kegunaan |
+| --- | --- |
+| **mcp_can** | Komunikasi CAN Bus via MCP2515. |
+| **Adafruit SSD1306** | Driver layar OLED 128x32. |
+| **Adafruit GFX Library** | Library grafis dasar untuk OLED. |
+| **RTClib** | Komunikasi dengan modul jam RTC DS3231. |
+
+> **Catatan:** Library BLE (`BLEDevice.h`, dll) sudah termasuk dalam paket Board ESP32, jadi tidak perlu instal manual.
+
+---
+
+### 3. Konfigurasi Board & Partition Scheme (Huge APP)
+
+Ini adalah bagian terpenting agar flash berhasil:
+
+1. Hubungkan ESP32-C3 ke komputer.
+2. Pilih Board: **Tools > Board > ESP32 > ESP32C3 Dev Module**.
+3. Pilih Port: **Tools > Port > (Pilih port USB kamu)**.
+4. **Flash Mode**: Pilih **DIO**.
+5. **Partition Scheme**: Pilih **Huge APP (3MB No OTA/1MB SPIFFS)**.
+* *Mengapa?* Karena library BLE memakan banyak memori flash. Jika menggunakan "Default", program kamu kemungkinan besar akan gagal saat proses *linking* karena ukurannya melebihi batas default.
+
+
+6. **Flash Frequency**: Pilih **80MHz**.
+
+---
+
+### 4. Proses Flashing
+
+1. Buka file `jamFoxRS_MCP_V15.1_BLE.ino` di Arduino IDE.
+2. Klik tombol **Verify** (Centang) untuk memastikan tidak ada error pada library.
+3. Klik tombol **Upload** (Panah kanan).
+4. Jika muncul tulisan `Connecting...`, tekan dan tahan tombol **BOOT** pada ESP32-C3 sebentar sampai proses penulisan (`Writing...`) dimulai.
+
+---
+
+### 5. Troubleshooting Khusus ESP32-C3
+
+* **Safe Mode**: Jika setelah flash BLE tidak muncul atau bootloop, kamu bisa masuk ke **Safe Mode** yang sudah kamu buat di kode dengan menahan `BUTTON_PIN` (Pin 3) saat startup untuk mematikan BLE sementara.
+* **Pin I2C**: Pastikan OLED terhubung ke Pin 8 (SDA) dan Pin 9 (SCL) sesuai definisi di kodinganmu.
+* **Baudrate Serial**: Pastikan Serial Monitor diatur ke **115200** untuk melihat pesan debug.
 
 ---
 > ### ⚠️ PENTING: Khusus Pengguna ESP32-C3 Super Mini
