@@ -168,16 +168,31 @@ function saveGPX() {
     if (gpxDataPoints.length === 0) return;
     const now = new Date();
     const fileName = `VOTOL_${now.getHours()}${now.getMinutes()}.gpx`;
-    let gpx = `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Votol Dash Pro" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v2"><trk><name>Votol Telemetry</name><trkseg>`;
+
+    // HEADER: Tetap menggunakan skema Garmin agar RPM (Heart Rate) tetap terbaca
+    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Votol Dash Pro" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v2">
+<trk><name>Votol Telemetry</name><trkseg>`;
+
     gpxDataPoints.forEach(p => {
-        const speedMS = (p.speed / 3.6).toFixed(3);
-        gpx += `<trkpt lat="${p.lat}" lon="${p.lon}"><ele>${p.ele.toFixed(2)}</ele><time>${p.time}</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:speed>${speedMS}</gpxtpx:speed><gpxtpx:hr>${p.rpm}</gpxtpx:hr><gpxtpx:cad>${p.soc}</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>`;
+        gpx += `
+<trkpt lat="${p.lat}" lon="${p.lon}">
+    <ele>${p.ele.toFixed(2)}</ele>
+    <time>${p.time}</time>
+    <extensions>
+        <gpxtpx:TrackPointExtension>
+            <gpxtpx:hr>${p.rpm}</gpxtpx:hr> <gpxtpx:cad>${p.soc}</gpxtpx:cad> </gpxtpx:TrackPointExtension>
+    </extensions>
+</trkpt>`;
     });
+
     gpx += `\n</trkseg></trk></gpx>`;
+    
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = fileName; a.click();
+    URL.revokeObjectURL(url);
 }
 
 async function toggleRecord() {
