@@ -1,6 +1,6 @@
 /**
- * Votol Dash Pro v1.1 - ULTIMATE INTEGRATION
- * Fitur: Dashboard, GPX (Insta360), Wake Lock, Glow-Ball, BMS Detail (Bars/Delta), & Trip Analytics
+ * Votol Dash Pro v1.1 - ULTIMATE INTEGRATION (FIXED TELEMETRY)
+ * Fitur: Dashboard, GPX (Insta360), Wake Lock, Glow-Ball, BMS Detail, & Trip Analytics
  */
 
 const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
@@ -36,7 +36,23 @@ if ("geolocation" in navigator) {
     );
 }
 
-// --- PREVENT SCREEN OFF ---
+// --- FUNGSI PENTING: MENGUMPULKAN DATA GPX ---
+function collectTelemetry(votolData) {
+    if (!isRecording) return;
+    
+    // Memasukkan data real-time dari Votol ke dalam antrean GPX
+    gpxDataPoints.push({
+        lat: currentGPS.lat,
+        lon: currentGPS.lon,
+        ele: currentGPS.alt || 0,
+        time: new Date().toISOString(),
+        speed: parseFloat(votolData.speed) || 0, // Mengambil Speed dari Votol
+        rpm: parseInt(votolData.rpm) || 0,       // Mengambil RPM dari Votol
+        soc: votolData.soc || 0,
+        temp: votolData.temps?.motor || 0
+    });
+}
+
 async function requestWakeLock() {
     try {
         if ('wakeLock' in navigator) {
@@ -45,7 +61,6 @@ async function requestWakeLock() {
     } catch (err) { console.error(err); }
 }
 
-// --- NAVIGATION ---
 async function loadPage(pageName, element) {
     try {
         const response = await fetch(`${pageName}.html`);
@@ -61,51 +76,28 @@ async function loadPage(pageName, element) {
     } catch (error) { console.error(error); }
 }
 
-// --- DATA PROCESSING & UI UPDATE ---
 function updateUI(data) {
     if (!isConnected || !data) return;
 
-    // 1. Logs Traffic (Traffic JSON)
+    // PANGGIL KOLEKSI TELEMETRI SETIAP DATA MASUK
+    collectTelemetry(data);
+
+    // Logs & History Chart
     const logBox = document.getElementById('log-box');
     if (logBox) {
-        logBox.innerText = `[${new Date().toLocaleTimeString()}] ${JSON.stringify(data)}\n` + logBox.innerText.substring(0, 1000);
+        logBox.innerText = `[${new Date().toLocaleTimeString()}] ${JSON.stringify(data)}\n` + logBox.innerText.substring(0, 500);
     }
 
-    // 2. GPX Data Collection
-    if (isRecording) {
-        gpxDataPoints.push({
-            lat: currentGPS.lat, lon: currentGPS.lon, ele: currentGPS.alt,
-            time: new Date().toISOString(),
-            speed: data.speed || 0, rpm: data.rpm || 0,
-            temp: data.temps?.motor || 0, soc: data.soc || 0,
-            current: Math.abs(data.amps || 0)
-        });
-    }
-
-    // 3. History Charts Update
     speedHistory.push(data.speed || 0);
     currentHistory.push(Math.abs(data.amps || 0));
-    speedHistory.shift();
-    currentHistory.shift();
+    speedHistory.shift(); currentHistory.shift();
     if (speedChart && currentChart) {
         speedChart.data.datasets[0].data = [...speedHistory];
         currentChart.data.datasets[0].data = [...currentHistory];
-        speedChart.update('none');
-        currentChart.update('none');
+        speedChart.update('none'); currentChart.update('none');
     }
 
-    // 4. Mode Badge & Gauge Animation
-    const modeEl = document.getElementById('mode-text');
-    if (modeEl && data.mode) {
-        modeEl.innerText = data.mode;
-        const m = data.mode.toUpperCase();
-        if (m === "SPORT") modeEl.style.backgroundColor = "#d29922";
-        else if (m === "DRIVE") modeEl.style.backgroundColor = "#238636";
-        else if (m === "REVERSE") modeEl.style.backgroundColor = "#bc8cff";
-        else if (m === "PARK") modeEl.style.backgroundColor = "#30363d";
-        else modeEl.style.backgroundColor = "#f85149";
-    }
-
+    // Gauge & Glow Ball
     const rpm = data.rpm || 0;
     const circle = document.getElementById('gauge-circle');
     const ball = document.getElementById('glow-ball');
@@ -119,27 +111,21 @@ function updateUI(data) {
         }
     }
 
-    // 5. Global Data Update (All IDs)
+    // Global Stats Update
     const h = data.health || {};
     const t = data.trip || {};
     const vals = {
         'speed': data.speed || 0, 'rpm-val': rpm,
         'soc-dash': (data.soc || 0) + "%", 'soc-batt': (data.soc || 0) + "%",
         'soh-val': (h.soh || 0) + "%", 'v-val': (data.volts || 0).toFixed(1) + "V",
-        'a-val': (data.amps || 0).toFixed(1) + "A", 'w-val': Math.abs((data.volts||0)*(data.amps||0)).toFixed(0) + "W",
+        'a-val': (data.amps || 0).toFixed(1) + "A",
         'range-val': (t.range || 0) + " km", 'trip-val': (t.km || 0).toFixed(1) + " km",
-        't-ecu': (data.temps?.ctrl || 0) + "°", 't-motor': (data.temps?.motor || 0) + "°", 't-batt': (data.temps?.batt || 0) + "°",
-        
-        // BMS Detail Fix (remainCap & fullCap)
-        'cycle-val': h.cycles || 0,
         'cap-rem': (h.remainCap || 0).toFixed(1) + " Ah",
         'cap-full': (h.fullCap || 0).toFixed(1) + " Ah",
-        'bms-status': data.amps > 0.5 ? "CHARGING" : (data.amps < -0.5 ? "DISCHARGE" : "STANDBY"),
-
-        // Trip Analytics Fix
         'trip-dist-large': (t.km || 0).toFixed(1) + " km",
         'avg-wh': (t.avg || 0).toFixed(1),
-        'est-range-trip': (t.range || 0) + " km"
+        'est-range-trip': (t.range || 0) + " km",
+        't-ecu': (data.temps?.ctrl || 0) + "°", 't-motor': (data.temps?.motor || 0) + "°", 't-batt': (data.temps?.batt || 0) + "°"
     };
 
     for (const [id, val] of Object.entries(vals)) {
@@ -147,7 +133,7 @@ function updateUI(data) {
         if (el) el.innerText = val;
     }
 
-    // 6. BMS Cell Bars & Delta Calculation
+    // BMS Cells & Delta
     if (data.cells && data.cells.length > 0) {
         const cellVolts = data.cells.map(mv => mv / 1000);
         const maxV = Math.max(...cellVolts);
@@ -168,12 +154,39 @@ function updateUI(data) {
             }
         });
     }
-
-    const bar = document.getElementById('soc-bar');
-    if (bar) bar.style.width = (data.soc || 0) + "%";
 }
 
-// --- GPX & RECORD LOGIC ---
+// --- FUNGSI SAVE GPX UNTUK INSTA360 ---
+function saveGPX() {
+    if (gpxDataPoints.length === 0) return;
+    const now = new Date();
+    const fileName = `VOTOL_${now.getHours()}${now.getMinutes()}${now.getSeconds()}.gpx`;
+
+    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Votol Dash Pro" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v2">
+<trk><name>Votol Telemetry</name><trkseg>`;
+
+    gpxDataPoints.forEach(p => {
+        // PENTING: Konversi KM/H ke M/S agar akurat di Insta360
+        const speedMS = (p.speed / 3.6).toFixed(3);
+        gpx += `
+<trkpt lat="${p.lat}" lon="${p.lon}">
+    <ele>${p.ele.toFixed(2)}</ele><time>${p.time}</time>
+    <extensions><gpxtpx:TrackPointExtension>
+        <gpxtpx:speed>${speedMS}</gpxtpx:speed>
+        <gpxtpx:hr>${p.rpm}</gpxtpx:hr>
+        <gpxtpx:cad>${p.soc}</gpxtpx:cad>
+    </gpxtpx:TrackPointExtension></extensions>
+</trkpt>`;
+    });
+
+    gpx += `\n</trkseg></trk></gpx>`;
+    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName; a.click();
+}
+
 async function toggleRecord() {
     const btn = document.getElementById('recordBtn');
     const icon = document.getElementById('record-icon');
@@ -197,25 +210,6 @@ async function toggleRecord() {
     }
 }
 
-function saveGPX() {
-    if (gpxDataPoints.length === 0) return;
-    const now = new Date();
-    const fileName = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}.gpx`;
-    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Votol Dash Pro" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v2">
-<trk><name>Votol Session</name><trkseg>`;
-    gpxDataPoints.forEach(p => {
-        const speedMS = (p.speed / 3.6).toFixed(3);
-        gpx += `<trkpt lat="${p.lat}" lon="${p.lon}"><ele>${p.ele.toFixed(2)}</ele><time>${p.time}</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:speed>${speedMS}</gpxtpx:speed><gpxtpx:hr>${p.rpm}</gpxtpx:hr><gpxtpx:cad>${p.soc}</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>`;
-    });
-    gpx += `\n</trkseg></trk></gpx>`;
-    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = fileName; a.click();
-}
-
-// --- BLUETOOTH CONNECT ---
 async function toggleConnect() {
     if (isConnected) { if (bluetoothDevice) await bluetoothDevice.gatt.disconnect(); } 
     else {
@@ -233,7 +227,6 @@ async function toggleConnect() {
                 }
             });
             rxChar = await service.getCharacteristic(RX_CHAR_UUID);
-            bluetoothDevice.addEventListener('gattserverdisconnected', () => setStatus(false));
             setStatus(true);
         } catch (e) { alert("Koneksi Gagal: " + e); }
     }
@@ -245,16 +238,11 @@ function setStatus(s) {
     const st = document.getElementById('conn-status'); if(st) { st.innerText = s ? "● ONLINE" : "● OFFLINE"; st.style.color = s ? "#3fb950" : "#f85149"; }
 }
 
-// --- CELL GENERATION (Fix Bar HTML) ---
 function generateCells() {
     const grid = document.getElementById('cell-grid');
     if (!grid || grid.children.length > 0) return;
     for (let i = 1; i <= 23; i++) {
-        grid.innerHTML += `
-            <div class="cell-card">
-                <div class="cell-info"><small class="cell-id">C${i}</small><b id="c${i}-v">0.000V</b></div>
-                <div class="cell-bar-bg"><div id="c${i}-bar" class="cell-bar-fill"></div></div>
-            </div>`;
+        grid.innerHTML += `<div class="cell-card"><div class="cell-info"><small class="cell-id">C${i}</small><b id="c${i}-v">0.000V</b></div><div class="cell-bar-bg"><div id="c${i}-bar" class="cell-bar-fill"></div></div></div>`;
     }
 }
 
@@ -267,62 +255,8 @@ function initCharts() {
     currentChart = new Chart(ctxC, { type:'line', data:{labels:Array(30).fill(''), datasets:[{data:[...currentHistory], borderColor:'#58a6ff', fill:true, backgroundColor:'rgba(88,166,255,0.1)'}]}, options:opt });
 }
 
-// --- FUNGSI SETTINGS DENGAN FEEDBACK ---
-async function sendSplash() {
-    if (!rxChar) {
-        alert("Gagal: Bluetooth belum terhubung!");
-        return;
-    }
-    const val = document.getElementById('splashInput').value.trim();
-    if (val) {
-        try {
-            await rxChar.writeValue(new TextEncoder().encode(`SPLASH,${val}`));
-            alert(`Berhasil! Nama Splash diubah menjadi: ${val}`); 
-        } catch (error) {
-            alert("Gagal mengirim data: " + error);
-        }
-    } else {
-        alert("Masukkan nama terlebih dahulu!");
-    }
-}
-
-async function syncTime() {
-    if (!rxChar) {
-        alert("Gagal: Bluetooth belum terhubung!");
-        return;
-    }
-    try {
-        const n = new Date();
-        // Format: TIME,YYYY,MM,DD,HH,MM,SS
-        const cmd = `TIME,${n.getFullYear()},${n.getMonth()+1},${n.getDate()},${n.getHours()},${n.getMinutes()},${n.getSeconds()}`;
-        await rxChar.writeValue(new TextEncoder().encode(cmd));
-        alert("Waktu HP berhasil disinkronkan ke Motor!"); 
-    } catch (error) {
-        alert("Gagal sinkronisasi waktu: " + error);
-    }
-}
-
-// Tambahkan pengecekan ini di loadPage agar Cell Bar selalu muncul saat pindah tab
-async function loadPage(pageName, element) {
-    try {
-        const response = await fetch(`${pageName}.html`);
-        const html = await response.text();
-        document.getElementById('page-container').innerHTML = html;
-        
-        lucide.createIcons();
-        
-        // Memastikan inisialisasi ulang saat navigasi
-        if (pageName === 'battery') generateCells(); 
-        if (pageName === 'trip') initCharts();
-        
-        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        if (element) element.classList.add('active');
-    } catch (error) { console.error('Gagal memuat halaman:', error); }
-}
+async function sendSplash() { if (!rxChar) return; const v = document.getElementById('splashInput').value.trim(); if (v) { await rxChar.writeValue(new TextEncoder().encode(`SPLASH,${v}`)); alert("Splash Updated!"); } }
+async function syncTime() { if (!rxChar) return; const n = new Date(); const cmd = `TIME,${n.getFullYear()},${n.getMonth()+1},${n.getDate()},${n.getHours()},${n.getMinutes()},${n.getSeconds()}`; await rxChar.writeValue(new TextEncoder().encode(cmd)); alert("Time Synced!"); }
 
 window.addEventListener('DOMContentLoaded', () => loadPage('dash'));
-
-setInterval(() => { 
-    const clock = document.getElementById('clock'); 
-    if(clock) clock.innerText = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); 
-}, 1000);
+setInterval(() => { const clock = document.getElementById('clock'); if(clock) clock.innerText = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }, 1000);
