@@ -1,6 +1,6 @@
 /**
- * Votol Dash Pro v1.1 - ULTIMATE FIX
- * Fitur: Dashboard, GPX (Insta360), Wake Lock, Glow-Ball Animation, & BMS Detail
+ * Votol Dash Pro v1.1 - ULTIMATE INTEGRATION
+ * Fitur: Dashboard, GPX (Insta360), Wake Lock, Glow-Ball, BMS Detail (Bars/Delta), & Trip Analytics
  */
 
 const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
@@ -23,7 +23,7 @@ let gpxDataPoints = [];
 let currentGPS = { lat: 0, lon: 0, alt: 0 };
 let wakeLock = null;
 
-// --- INITIALIZE GPS ---
+// --- GPS INITIALIZATION ---
 if ("geolocation" in navigator) {
     navigator.geolocation.watchPosition(
         (pos) => {
@@ -36,6 +36,7 @@ if ("geolocation" in navigator) {
     );
 }
 
+// --- PREVENT SCREEN OFF ---
 async function requestWakeLock() {
     try {
         if ('wakeLock' in navigator) {
@@ -44,6 +45,7 @@ async function requestWakeLock() {
     } catch (err) { console.error(err); }
 }
 
+// --- NAVIGATION ---
 async function loadPage(pageName, element) {
     try {
         const response = await fetch(`${pageName}.html`);
@@ -59,16 +61,17 @@ async function loadPage(pageName, element) {
     } catch (error) { console.error(error); }
 }
 
+// --- DATA PROCESSING & UI UPDATE ---
 function updateUI(data) {
     if (!isConnected || !data) return;
 
-    // 1. LOGS TRAFFIC
+    // 1. Logs Traffic (Traffic JSON)
     const logBox = document.getElementById('log-box');
     if (logBox) {
         logBox.innerText = `[${new Date().toLocaleTimeString()}] ${JSON.stringify(data)}\n` + logBox.innerText.substring(0, 1000);
     }
 
-    // 2. GPX RECORDING (Speed Votol & RPM as Heart Rate)
+    // 2. GPX Data Collection
     if (isRecording) {
         gpxDataPoints.push({
             lat: currentGPS.lat, lon: currentGPS.lon, ele: currentGPS.alt,
@@ -79,7 +82,7 @@ function updateUI(data) {
         });
     }
 
-    // 3. GRAPH DATA
+    // 3. History Charts Update
     speedHistory.push(data.speed || 0);
     currentHistory.push(Math.abs(data.amps || 0));
     speedHistory.shift();
@@ -91,28 +94,7 @@ function updateUI(data) {
         currentChart.update('none');
     }
 
-    // 4. SPEED GAUGE & GLOW BALL ANIMATION
-    const rpm = data.rpm || 0;
-    const circle = document.getElementById('gauge-circle');
-    const ball = document.getElementById('glow-ball');
-    if (circle) {
-        const deg = Math.min((rpm / 1600) * 360, 360);
-        circle.style.setProperty('--deg', `${deg}deg`);
-        circle.style.background = `radial-gradient(var(--card-bg) 64%, transparent 66%), conic-gradient(from 180deg, var(--cyan) ${deg}deg, #21262d 0deg)`;
-        
-        if (ball) {
-            ball.style.display = "block";
-            // Perhitungan posisi bola di ujung animasi (Polar to Cartesian)
-            const rad = (deg + 180 - 90) * (Math.PI / 180);
-            const x = Math.cos(rad) * 100; // 100px adalah radius lingkaran gauge
-            const y = Math.sin(rad) * 100;
-            ball.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
-        }
-    }
-
-    // 5. DATA GLOBAL & CAPACITY FIX
-    const h = data.health || {};
-    const t = data.trip || {};
+    // 4. Mode Badge & Gauge Animation
     const modeEl = document.getElementById('mode-text');
     if (modeEl && data.mode) {
         modeEl.innerText = data.mode;
@@ -124,16 +106,40 @@ function updateUI(data) {
         else modeEl.style.backgroundColor = "#f85149";
     }
 
+    const rpm = data.rpm || 0;
+    const circle = document.getElementById('gauge-circle');
+    const ball = document.getElementById('glow-ball');
+    if (circle) {
+        const deg = Math.min((rpm / 1600) * 360, 360);
+        circle.style.setProperty('--deg', `${deg}deg`);
+        circle.style.background = `radial-gradient(var(--card-bg) 64%, transparent 66%), conic-gradient(from 180deg, var(--cyan) ${deg}deg, #21262d 0deg)`;
+        if (ball) {
+            const rad = (deg + 180 - 90) * (Math.PI / 180);
+            ball.style.transform = `translate(calc(-50% + ${Math.cos(rad)*100}px), calc(-50% + ${Math.sin(rad)*100}px))`;
+        }
+    }
+
+    // 5. Global Data Update (All IDs)
+    const h = data.health || {};
+    const t = data.trip || {};
     const vals = {
         'speed': data.speed || 0, 'rpm-val': rpm,
         'soc-dash': (data.soc || 0) + "%", 'soc-batt': (data.soc || 0) + "%",
         'soh-val': (h.soh || 0) + "%", 'v-val': (data.volts || 0).toFixed(1) + "V",
         'a-val': (data.amps || 0).toFixed(1) + "A", 'w-val': Math.abs((data.volts||0)*(data.amps||0)).toFixed(0) + "W",
-        'cycle-val': h.cycles || 0, 
-        'cap-rem': (h.rem_cap || 0).toFixed(1) + " Ah", // FIX: Menggunakan rem_cap
-        'cap-full': (h.full_cap || 0).toFixed(1) + " Ah", // FIX: Menggunakan full_cap
         'range-val': (t.range || 0) + " km", 'trip-val': (t.km || 0).toFixed(1) + " km",
-        't-ecu': (data.temps?.ctrl || 0) + "°", 't-motor': (data.temps?.motor || 0) + "°", 't-batt': (data.temps?.batt || 0) + "°"
+        't-ecu': (data.temps?.ctrl || 0) + "°", 't-motor': (data.temps?.motor || 0) + "°", 't-batt': (data.temps?.batt || 0) + "°",
+        
+        // BMS Detail Fix (remainCap & fullCap)
+        'cycle-val': h.cycles || 0,
+        'cap-rem': (h.remainCap || 0).toFixed(1) + " Ah",
+        'cap-full': (h.fullCap || 0).toFixed(1) + " Ah",
+        'bms-status': data.amps > 0.5 ? "CHARGING" : (data.amps < -0.5 ? "DISCHARGE" : "STANDBY"),
+
+        // Trip Analytics Fix
+        'trip-dist-large': (t.km || 0).toFixed(1) + " km",
+        'avg-wh': (t.avg || 0).toFixed(1),
+        'est-range-trip': (t.range || 0) + " km"
     };
 
     for (const [id, val] of Object.entries(vals)) {
@@ -141,7 +147,7 @@ function updateUI(data) {
         if (el) el.innerText = val;
     }
 
-    // 6. BMS CELL BARS & DELTA
+    // 6. BMS Cell Bars & Delta Calculation
     if (data.cells && data.cells.length > 0) {
         const cellVolts = data.cells.map(mv => mv / 1000);
         const maxV = Math.max(...cellVolts);
@@ -167,7 +173,7 @@ function updateUI(data) {
     if (bar) bar.style.width = (data.soc || 0) + "%";
 }
 
-// --- GPX EXPORT & WAKE LOCK ---
+// --- GPX & RECORD LOGIC ---
 async function toggleRecord() {
     const btn = document.getElementById('recordBtn');
     const icon = document.getElementById('record-icon');
@@ -200,15 +206,7 @@ function saveGPX() {
 <trk><name>Votol Session</name><trkseg>`;
     gpxDataPoints.forEach(p => {
         const speedMS = (p.speed / 3.6).toFixed(3);
-        gpx += `
-<trkpt lat="${p.lat}" lon="${p.lon}">
-    <ele>${p.ele.toFixed(2)}</ele><time>${p.time}</time>
-    <extensions><gpxtpx:TrackPointExtension>
-        <gpxtpx:speed>${speedMS}</gpxtpx:speed>
-        <gpxtpx:hr>${p.rpm}</gpxtpx:hr>
-        <gpxtpx:cad>${p.soc}</gpxtpx:cad>
-    </gpxtpx:TrackPointExtension></extensions>
-</trkpt>`;
+        gpx += `<trkpt lat="${p.lat}" lon="${p.lon}"><ele>${p.ele.toFixed(2)}</ele><time>${p.time}</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:speed>${speedMS}</gpxtpx:speed><gpxtpx:hr>${p.rpm}</gpxtpx:hr><gpxtpx:cad>${p.soc}</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>`;
     });
     gpx += `\n</trkseg></trk></gpx>`;
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
@@ -217,7 +215,7 @@ function saveGPX() {
     a.href = url; a.download = fileName; a.click();
 }
 
-// --- BLUETOOTH & UTILITY ---
+// --- BLUETOOTH CONNECT ---
 async function toggleConnect() {
     if (isConnected) { if (bluetoothDevice) await bluetoothDevice.gatt.disconnect(); } 
     else {
@@ -247,6 +245,7 @@ function setStatus(s) {
     const st = document.getElementById('conn-status'); if(st) { st.innerText = s ? "● ONLINE" : "● OFFLINE"; st.style.color = s ? "#3fb950" : "#f85149"; }
 }
 
+// --- CELL GENERATION (Fix Bar HTML) ---
 function generateCells() {
     const grid = document.getElementById('cell-grid');
     if (!grid || grid.children.length > 0) return;
