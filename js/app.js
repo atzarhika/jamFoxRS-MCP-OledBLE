@@ -267,8 +267,46 @@ function initCharts() {
     currentChart = new Chart(ctxC, { type:'line', data:{labels:Array(30).fill(''), datasets:[{data:[...currentHistory], borderColor:'#58a6ff', fill:true, backgroundColor:'rgba(88,166,255,0.1)'}]}, options:opt });
 }
 
-async function sendSplash() { if (rxChar) { const v = document.getElementById('splashInput').value.trim(); if (v) await rxChar.writeValue(new TextEncoder().encode(`SPLASH,${v}`)); } }
-async function syncTime() { if (rxChar) { const n = new Date(); const cmd = `TIME,${n.getFullYear()},${n.getMonth()+1},${n.getDate()},${n.getHours()},${n.getMinutes()},${n.getSeconds()}`; await rxChar.writeValue(new TextEncoder().encode(cmd)); } }
+// --- FUNGSI SETTINGS DENGAN NOTIFIKASI ---
+async function sendSplash() {
+    if (!rxChar) {
+        alert("Gagal: Bluetooth belum terhubung!"); 
+        return;
+    }
+    const val = document.getElementById('splashInput').value.trim();
+    if (val) {
+        try {
+            await rxChar.writeValue(new TextEncoder().encode(`SPLASH,${val}`));
+            alert(`Berhasil! Nama Splash diubah menjadi: ${val}`); 
+        } catch (error) {
+            alert("Gagal mengirim data: " + error);
+        }
+    } else {
+        alert("Masukkan nama terlebih dahulu!");
+    }
+}
 
+async function syncTime() {
+    if (!rxChar) {
+        alert("Gagal: Bluetooth belum terhubung!");
+        return;
+    }
+    try {
+        const n = new Date();
+        // Format: TIME,YYYY,MM,DD,HH,MM,SS sesuai kebutuhan firmware
+        const cmd = `TIME,${n.getFullYear()},${n.getMonth()+1},${n.getDate()},${n.getHours()},${n.getMinutes()},${n.getSeconds()}`;
+        await rxChar.writeValue(new TextEncoder().encode(cmd));
+        alert("Waktu berhasil disinkronkan dengan HP!"); 
+    } catch (error) {
+        alert("Gagal sinkronisasi waktu: " + error);
+    }
+}
+
+// Inisialisasi halaman dashboard saat web pertama kali dibuka
 window.addEventListener('DOMContentLoaded', () => loadPage('dash'));
-setInterval(() => { const clock = document.getElementById('clock'); if(clock) clock.innerText = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }, 1000);
+
+// Update jam digital setiap detik
+setInterval(() => { 
+    const clock = document.getElementById('clock'); 
+    if(clock) clock.innerText = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); 
+}, 1000);
