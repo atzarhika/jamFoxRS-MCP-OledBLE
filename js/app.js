@@ -1,6 +1,6 @@
 /**
- * Votol Dash Pro v1.1 - THE COMPLETE REPAIR
- * Fitur: Dashboard, Mode, GPX (Insta360), Wake Lock, Glow-Ball, BMS Detail, Settings Feedback, & Trip Analytics
+ * Votol Dash Pro v1.1 - ULTIMATE TEST VERSION
+ * Fitur: Dashboard, Mode, GPX (Votol Speed), Wake Lock, Glow-Ball, BMS Detail, & Settings Alert
  */
 
 const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
@@ -50,8 +50,8 @@ function collectTelemetry(votolData) {
         lon: currentGPS.lon,
         ele: currentGPS.alt || 0,
         time: new Date().toISOString(),
-        speed: parseFloat(votolData.speed) || 0,
-        rpm: parseInt(votolData.rpm) || 0,
+        speed: parseFloat(votolData.speed) || 0, // Speed murni dari Votol
+        rpm: parseInt(votolData.rpm) || 0,       // RPM motor
         soc: votolData.soc || 0
     });
 }
@@ -63,23 +63,20 @@ async function loadPage(pageName, element) {
         const html = await response.text();
         document.getElementById('page-container').innerHTML = html;
         lucide.createIcons();
-        
         if (pageName === 'battery') generateCells();
         if (pageName === 'trip') initCharts();
-        
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
         if (element) element.classList.add('active');
     } catch (error) { console.error(error); }
 }
 
-// --- UPDATE UI CORE ---
+// --- UPDATE UI ---
 function updateUI(data) {
     if (!isConnected || !data) return;
     
-    // 1. KOLEKSI TELEMETRI GPX
     collectTelemetry(data);
 
-    // 2. LOGS & CHARTS
+    // Logs & History
     const logBox = document.getElementById('log-box');
     if (logBox) {
         logBox.innerText = `[${new Date().toLocaleTimeString()}] ${JSON.stringify(data)}\n` + logBox.innerText.substring(0, 500);
@@ -93,7 +90,7 @@ function updateUI(data) {
         speedChart.update('none'); currentChart.update('none');
     }
 
-    // 3. MODE BERKENDARA (DITAMBAHKAN KEMBALI)
+    // 1. MODE BERKENDARA
     const modeEl = document.getElementById('mode-text');
     if (modeEl && data.mode) {
         modeEl.innerText = data.mode;
@@ -105,7 +102,7 @@ function updateUI(data) {
         else modeEl.style.backgroundColor = "#f85149";
     }
 
-    // 4. GAUGE & GLOW BALL
+    // 2. GAUGE & BOLA BIRU (GLOW-BALL)
     const rpm = data.rpm || 0;
     const circle = document.getElementById('gauge-circle');
     const ball = document.getElementById('glow-ball');
@@ -114,12 +111,14 @@ function updateUI(data) {
         circle.style.setProperty('--deg', `${deg}deg`);
         circle.style.background = `radial-gradient(var(--card-bg) 64%, transparent 66%), conic-gradient(from 180deg, var(--cyan) ${deg}deg, #21262d 0deg)`;
         if (ball) {
+            // Memunculkan bola jika ada RPM
+            ball.style.display = rpm > 0 ? "block" : "none";
             const rad = (deg + 180 - 90) * (Math.PI / 180);
             ball.style.transform = `translate(calc(-50% + ${Math.cos(rad)*100}px), calc(-50% + ${Math.sin(rad)*100}px))`;
         }
     }
 
-    // 5. MAPPING DATA GLOBAL (BMS & TRIP)
+    // 3. MAPPING PARAMETER
     const h = data.health || {};
     const t = data.trip || {};
     const vals = {
@@ -141,7 +140,7 @@ function updateUI(data) {
         if (el) el.innerText = val;
     }
 
-    // 6. BMS CELLS & DELTA
+    // 4. BMS CELLS
     if (data.cells && data.cells.length > 0) {
         const cellVolts = data.cells.map(mv => mv / 1000);
         const maxV = Math.max(...cellVolts);
@@ -162,19 +161,17 @@ function updateUI(data) {
             }
         });
     }
-    const bar = document.getElementById('soc-bar');
-    if (bar) bar.style.width = (data.soc || 0) + "%";
 }
 
-// --- GPX EXPORT ---
+// --- GPX SAVE ---
 function saveGPX() {
     if (gpxDataPoints.length === 0) return;
     const now = new Date();
-    const fileName = `VOTOL_${now.getHours()}${now.getMinutes()}${now.getSeconds()}.gpx`;
-    let gpx = `<?xml version=\"1.0\" encoding=\"UTF-8\"?><gpx version=\"1.1\" creator=\"Votol Dash Pro\" xmlns=\"http://www.topografix.com/GPX/1/1\" xmlns:gpxtpx=\"http://www.garmin.com/xmlschemas/TrackPointExtension/v2\"><trk><name>Votol Telemetry</name><trkseg>`;
+    const fileName = `VOTOL_${now.getHours()}${now.getMinutes()}.gpx`;
+    let gpx = `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Votol Dash Pro" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v2"><trk><name>Votol Telemetry</name><trkseg>`;
     gpxDataPoints.forEach(p => {
         const speedMS = (p.speed / 3.6).toFixed(3);
-        gpx += `<trkpt lat=\"${p.lat}\" lon=\"${p.lon}\"><ele>${p.ele.toFixed(2)}</ele><time>${p.time}</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:speed>${speedMS}</gpxtpx:speed><gpxtpx:hr>${p.rpm}</gpxtpx:hr><gpxtpx:cad>${p.soc}</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>`;
+        gpx += `<trkpt lat="${p.lat}" lon="${p.lon}"><ele>${p.ele.toFixed(2)}</ele><time>${p.time}</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:speed>${speedMS}</gpxtpx:speed><gpxtpx:hr>${p.rpm}</gpxtpx:hr><gpxtpx:cad>${p.soc}</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>`;
     });
     gpx += `\n</trkseg></trk></gpx>`;
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
@@ -185,12 +182,11 @@ function saveGPX() {
 
 async function toggleRecord() {
     const btn = document.getElementById('recordBtn');
-    const icon = document.getElementById('record-icon');
     const timerEl = document.getElementById('record-timer');
     if (!isRecording) {
         await requestWakeLock();
         isRecording = true; gpxDataPoints = []; recordStartTime = Date.now();
-        btn.style.background = "#f85149"; icon.setAttribute("data-lucide", "square"); lucide.createIcons();
+        btn.style.background = "#f85149";
         recordInterval = setInterval(() => {
             const elapsed = Date.now() - recordStartTime;
             const h = Math.floor(elapsed / 3600000).toString().padStart(2, '0');
@@ -200,8 +196,8 @@ async function toggleRecord() {
         }, 1000);
     } else {
         isRecording = false; clearInterval(recordInterval);
-        if (wakeLock) { wakeLock.release().then(() => wakeLock = null); }
-        btn.style.background = "var(--orange)"; icon.setAttribute("data-lucide", "circle"); lucide.createIcons();
+        if (wakeLock) wakeLock.release().then(() => wakeLock = null);
+        btn.style.background = "var(--orange)";
         saveGPX();
     }
 }
@@ -231,36 +227,31 @@ async function toggleConnect() {
 
 function setStatus(s) { 
     isConnected = s; 
-    const b = document.getElementById('connectBtn'); if(b) { b.innerText = s ? "DISCONNECT" : "CONNECT"; b.style.background = s ? "#f85149" : "#58a6ff"; } 
+    const b = document.getElementById('connectBtn'); if(b) b.innerText = s ? "DISCONNECT" : "CONNECT";
     const st = document.getElementById('conn-status'); if(st) { st.innerText = s ? "● ONLINE" : "● OFFLINE"; st.style.color = s ? "#3fb950" : "#f85149"; }
 }
 
 async function sendSplash() {
-    if (!rxChar) { alert("Gagal: Bluetooth belum terhubung!"); return; }
+    if (!rxChar) { alert("Hubungkan Bluetooth!"); return; }
     const v = document.getElementById('splashInput').value.trim();
-    if (v) { 
-        try {
-            await rxChar.writeValue(new TextEncoder().encode(`SPLASH,${v}`));
-            alert(`Berhasil! Nama Splash diubah menjadi: ${v}`);
-        } catch(e) { alert("Gagal mengirim: " + e); }
-    }
+    if (v) { try { await rxChar.writeValue(new TextEncoder().encode(`SPLASH,${v}`)); alert("Splash Name Diperbarui!"); } catch(e) { alert(e); } }
 }
 
 async function syncTime() {
-    if (!rxChar) { alert("Gagal: Bluetooth belum terhubung!"); return; }
+    if (!rxChar) { alert("Hubungkan Bluetooth!"); return; }
     try {
         const n = new Date();
         const cmd = `TIME,${n.getFullYear()},${n.getMonth()+1},${n.getDate()},${n.getHours()},${n.getMinutes()},${n.getSeconds()}`;
         await rxChar.writeValue(new TextEncoder().encode(cmd));
-        alert("Waktu berhasil disinkronkan!");
-    } catch(e) { alert("Gagal sinkronisasi: " + e); }
+        alert("Waktu Berhasil Disinkronkan!");
+    } catch(e) { alert(e); }
 }
 
 function generateCells() {
     const grid = document.getElementById('cell-grid');
     if (!grid || grid.children.length > 0) return;
     for (let i = 1; i <= 23; i++) {
-        grid.innerHTML += `<div class=\"cell-card\"><div class=\"cell-info\"><small class=\"cell-id\">C${i}</small><b id=\"c${i}-v\">0.000V</b></div><div class=\"cell-bar-bg\"><div id=\"c${i}-bar\" class=\"cell-bar-fill\"></div></div></div>`;
+        grid.innerHTML += `<div class="cell-card"><div class="cell-info"><small class="cell-id">C${i}</small><b id="c${i}-v">0.000V</b></div><div class="cell-bar-bg"><div id="c${i}-bar" class="cell-bar-fill"></div></div></div>`;
     }
 }
 
@@ -268,7 +259,7 @@ function initCharts() {
     const ctxS = document.getElementById('speedChart')?.getContext('2d');
     const ctxC = document.getElementById('currentChart')?.getContext('2d');
     if (!ctxS || !ctxC) return;
-    const opt = { responsive:true, maintainAspectRatio:false, scales:{x:{display:false}, y:{display:false, beginAtZero:true}}, plugins:{legend:{display:false}}, elements:{line:{tension:0.4, borderWidth:2}, point:{radius:0}} };
+    const opt = { responsive:true, maintainAspectRatio:false, scales:{x:{display:false}, y:{display:false}}, plugins:{legend:{display:false}}, elements:{line:{tension:0.4, borderWidth:2}, point:{radius:0}} };
     speedChart = new Chart(ctxS, { type:'line', data:{labels:Array(30).fill(''), datasets:[{data:[...speedHistory], borderColor:'#d29922', fill:true, backgroundColor:'rgba(210,153,34,0.1)'}]}, options:opt });
     currentChart = new Chart(ctxC, { type:'line', data:{labels:Array(30).fill(''), datasets:[{data:[...currentHistory], borderColor:'#58a6ff', fill:true, backgroundColor:'rgba(88,166,255,0.1)'}]}, options:opt });
 }
