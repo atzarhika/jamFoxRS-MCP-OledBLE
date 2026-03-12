@@ -267,10 +267,10 @@ function initCharts() {
     currentChart = new Chart(ctxC, { type:'line', data:{labels:Array(30).fill(''), datasets:[{data:[...currentHistory], borderColor:'#58a6ff', fill:true, backgroundColor:'rgba(88,166,255,0.1)'}]}, options:opt });
 }
 
-// --- FUNGSI SETTINGS DENGAN NOTIFIKASI ---
+// --- FUNGSI SETTINGS DENGAN FEEDBACK ---
 async function sendSplash() {
     if (!rxChar) {
-        alert("Gagal: Bluetooth belum terhubung!"); 
+        alert("Gagal: Bluetooth belum terhubung!");
         return;
     }
     const val = document.getElementById('splashInput').value.trim();
@@ -293,19 +293,35 @@ async function syncTime() {
     }
     try {
         const n = new Date();
-        // Format: TIME,YYYY,MM,DD,HH,MM,SS sesuai kebutuhan firmware
+        // Format: TIME,YYYY,MM,DD,HH,MM,SS
         const cmd = `TIME,${n.getFullYear()},${n.getMonth()+1},${n.getDate()},${n.getHours()},${n.getMinutes()},${n.getSeconds()}`;
         await rxChar.writeValue(new TextEncoder().encode(cmd));
-        alert("Waktu berhasil disinkronkan dengan HP!"); 
+        alert("Waktu HP berhasil disinkronkan ke Motor!"); 
     } catch (error) {
         alert("Gagal sinkronisasi waktu: " + error);
     }
 }
 
-// Inisialisasi halaman dashboard saat web pertama kali dibuka
+// Tambahkan pengecekan ini di loadPage agar Cell Bar selalu muncul saat pindah tab
+async function loadPage(pageName, element) {
+    try {
+        const response = await fetch(`${pageName}.html`);
+        const html = await response.text();
+        document.getElementById('page-container').innerHTML = html;
+        
+        lucide.createIcons();
+        
+        // Memastikan inisialisasi ulang saat navigasi
+        if (pageName === 'battery') generateCells(); 
+        if (pageName === 'trip') initCharts();
+        
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        if (element) element.classList.add('active');
+    } catch (error) { console.error('Gagal memuat halaman:', error); }
+}
+
 window.addEventListener('DOMContentLoaded', () => loadPage('dash'));
 
-// Update jam digital setiap detik
 setInterval(() => { 
     const clock = document.getElementById('clock'); 
     if(clock) clock.innerText = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); 
