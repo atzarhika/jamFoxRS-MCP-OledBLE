@@ -50,9 +50,10 @@ function collectTelemetry(votolData) {
         lon: currentGPS.lon,
         ele: currentGPS.alt || 0,
         time: new Date().toISOString(),
-        speed: parseFloat(votolData.speed) || 0, // Speed murni dari Votol
-        rpm: parseInt(votolData.rpm) || 0,       // RPM motor
-        soc: votolData.soc || 0
+        speed: parseFloat(votolData.speed) || 0,
+        rpm: parseInt(votolData.rpm) || 0,
+        soc: votolData.soc || 0,
+        current: votolData.amps || 0 // Tambahkan ini
     });
 }
 
@@ -166,22 +167,37 @@ function updateUI(data) {
 // --- GPX SAVE ---
 function saveGPX() {
     if (gpxDataPoints.length === 0) return;
+    
     const now = new Date();
-    const fileName = `VOTOL_${now.getHours()}${now.getMinutes()}.gpx`;
+    // Format Nama File: Votol-YYYYMMDD_HHMMSS.gpx
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const fileName = `Votol-${year}${month}${day}_${hours}${minutes}${seconds}.gpx`;
 
-    // HEADER: Tetap menggunakan skema Garmin agar RPM (Heart Rate) tetap terbaca
     let gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="Votol Dash Pro" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v2">
-<trk><name>Votol Telemetry</name><trkseg>`;
+<trk><name>Votol Telemetry Session</name><trkseg>`;
 
     gpxDataPoints.forEach(p => {
+        const speedMS = (p.speed / 3.6).toFixed(3); // Konversi km/h ke m/s untuk standar GPX
+        
         gpx += `
 <trkpt lat="${p.lat}" lon="${p.lon}">
     <ele>${p.ele.toFixed(2)}</ele>
     <time>${p.time}</time>
     <extensions>
         <gpxtpx:TrackPointExtension>
-            <gpxtpx:hr>${p.rpm}</gpxtpx:hr> <gpxtpx:cad>${p.soc}</gpxtpx:cad> </gpxtpx:TrackPointExtension>
+            <gpxtpx:speed>${speedMS}</gpxtpx:speed>
+            <gpxtpx:hr>${p.rpm}</gpxtpx:hr>
+            <gpxtpx:cad>${p.soc}</gpxtpx:cad>
+        </gpxtpx:TrackPointExtension>
+        <real_rpm>${p.rpm}</real_rpm>
+        <real_soc>${p.soc}</real_soc>
+        <real_current>${p.current || 0}</real_current>
     </extensions>
 </trkpt>`;
     });
@@ -191,7 +207,9 @@ function saveGPX() {
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = fileName; a.click();
+    a.href = url; 
+    a.download = fileName; 
+    a.click();
     URL.revokeObjectURL(url);
 }
 
