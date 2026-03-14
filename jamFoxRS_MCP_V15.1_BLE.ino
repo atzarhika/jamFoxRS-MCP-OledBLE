@@ -19,7 +19,7 @@
 #include <BLE2902.h>
 
 // ================= KONFIGURASI ALAT =================
-const char* FW_VERSION = "V15.9"; 
+const char* FW_VERSION = "V15.12"; // HYBRID MEMORY EDITION
 
 // ================= KONFIGURASI PIN =================
 #define SDA_PIN 8       
@@ -31,6 +31,11 @@ const char* FW_VERSION = "V15.9";
 #define MCP_INT_PIN 10  
 #define BUTTON_PIN 3    
 #define BUZZER_PIN 2    
+
+// ================= KONFIGURASI EXTERNAL EEPROM =================
+#define EEPROM_ADDR 0x57   
+#define ADDR_TRIP_KM 0     
+#define ADDR_TRIP_WH 4     
 
 // ================= KONFIGURASI NTP & BLE =================
 const char* ntpServer  = "pool.ntp.org";
@@ -77,6 +82,34 @@ float getSoCFromLookup(uint16_t raw) {
   return 0.0f;
 }
 
+// ================= FUNGSI BACA/TULIS EXTERNAL EEPROM =================
+// Menambahkan Fallback Anti-Bootloop
+void writeEEPROMFloat(unsigned int addr, float val) {
+  byte* p = (byte*)(void*)&val;
+  Wire.beginTransmission(EEPROM_ADDR);
+  Wire.write((int)(addr >> 8)); Wire.write((int)(addr & 0xFF));
+  for (byte i = 0; i < 4; i++) { Wire.write(*p++); }
+  Wire.endTransmission(); delay(10); 
+}
+
+float readEEPROMFloat(unsigned int addr) {
+  float val = 0.0; byte* p = (byte*)(void*)&val;
+  Wire.beginTransmission(EEPROM_ADDR);
+  Wire.write((int)(addr >> 8)); Wire.write((int)(addr & 0xFF));
+  if(Wire.endTransmission() != 0) return 0.0; // PENTING: Cegah Bootloop jika IC mati
+  
+  Wire.requestFrom((uint16_t)EEPROM_ADDR, (uint8_t)4);
+  int timeout = 0;
+  while(Wire.available() < 4 && timeout < 100) { delay(1); timeout++; } // Timeout anti-hang
+  
+  if (Wire.available() >= 4) {
+      for (byte i = 0; i < 4; i++) { *p++ = Wire.read(); }
+  }
+  uint32_t *check = (uint32_t*)&val;
+  if(*check == 0xFFFFFFFF || isnan(val)) return 0.0;
+  return val;
+}
+
 // ================= VARIABEL DATA =================
 int rpm = 0; int speed_kmh = 0;
 float volts = 0.0; float amps = 0.0; float power_watt = 0.0; int soc = 0;
@@ -113,6 +146,15 @@ bool soundEnabled = true, bleEnabled = false, inSettingsMode = false;
 int settingsCursor = 0;
 unsigned long beepEndTime = 0;
 
+// HYBRID MEMORY SYSTEM (V15.12)
+bool extEepromAvailable = false;
+String memoryInUse = "INTERNAL";
+
+bool oledSpeedWarnEnable = true;
+int oledSpeedWarnLimit = 70;
+bool buzzerSpeedWarnEnable = true;
+int buzzerSpeedWarnLimit = 80;
+
 bool btnState = false, lastBtnState = false;
 unsigned long btnPressTime = 0;
 bool isBtnPressed = false, handled3s = false, handled5s = false;
@@ -148,6 +190,26 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                 preferences.putString("splash", newSplash);
                 splashText = newSplash; 
                 if(soundEnabled) { digitalWrite(BUZZER_PIN, HIGH); delay(100); digitalWrite(BUZZER_PIN, LOW); }
+            }
+            else if (rxStr.startsWith("ALARM,")) {
+                int comma1 = rxStr.indexOf(',', 0);
+                int comma2 = rxStr.indexOf(',', comma1 + 1);
+                int comma3 = rxStr.indexOf(',', comma2 + 1);
+
+                if (comma1 > 0 && comma2 > 0 && comma3 > 0) {
+                    String type = rxStr.substring(comma1 + 1, comma2);
+                    int en = rxStr.substring(comma2 + 1, comma3).toInt();
+                    int limit = rxStr.substring(comma3 + 1).toInt();
+
+                    if (type == "OLED") {
+                        oledSpeedWarnEnable = (en == 1); oledSpeedWarnLimit = limit;
+                        preferences.putBool("oledSpdEn", oledSpeedWarnEnable); preferences.putInt("oledSpd", oledSpeedWarnLimit);
+                    } else if (type == "BUZZ") {
+                        buzzerSpeedWarnEnable = (en == 1); buzzerSpeedWarnLimit = limit;
+                        preferences.putBool("buzzSpdEn", buzzerSpeedWarnEnable); preferences.putInt("buzzSpd", buzzerSpeedWarnLimit);
+                    }
+                    if(soundEnabled) { digitalWrite(BUZZER_PIN, HIGH); delay(100); digitalWrite(BUZZER_PIN, LOW); }
+                }
             }
         }
     }
@@ -187,8 +249,25 @@ void setup() {
   soundEnabled = preferences.getBool("snd", true);
   bleEnabled = preferences.getBool("ble", false);
   
-  trip_km = preferences.getFloat("trip_km", 0.0);
-  trip_wh = preferences.getFloat("trip_wh", 0.0);
+  oledSpeedWarnEnable = preferences.getBool("oledSpdEn", true);
+  oledSpeedWarnLimit = preferences.getInt("oledSpd", 70);
+  buzzerSpeedWarnEnable = preferences.getBool("buzzSpdEn", true);
+  buzzerSpeedWarnLimit = preferences.getInt("buzzSpd", 80);
+
+  // --- LOGIKA HYBRID MEMORY (V15.12) ---
+  // Ketuk IC EEPROM untuk mengecek kehidupan
+  Wire.beginTransmission(EEPROM_ADDR);
+  if (Wire.endTransmission() == 0) {
+      extEepromAvailable = true;
+      memoryInUse = "EXT(RTC)";
+      trip_km = readEEPROMFloat(ADDR_TRIP_KM);
+      trip_wh = readEEPROMFloat(ADDR_TRIP_WH);
+  } else {
+      extEepromAvailable = false;
+      memoryInUse = "INTERNAL"; // Gagal respon, fallback aman ke ESP32
+      trip_km = preferences.getFloat("trip_km", 0.0);
+      trip_wh = preferences.getFloat("trip_wh", 0.0);
+  }
   last_saved_trip_km = trip_km;
 
   display.clearDisplay(); display.setFont(&FreeSansBold9pt7b); display.setTextColor(SSD1306_WHITE);
@@ -254,8 +333,10 @@ void handleBuzzer() {
   if (!soundEnabled) { digitalWrite(BUZZER_PIN, LOW); return; }
   unsigned long now = millis();
   if (beepEndTime > now) { digitalWrite(BUZZER_PIN, HIGH); return; }
-  if (speed_kmh >= 85) { digitalWrite(BUZZER_PIN, ((now % 300) < 100) ? HIGH : LOW); return; }
+  
+  if (buzzerSpeedWarnEnable && speed_kmh >= buzzerSpeedWarnLimit) { digitalWrite(BUZZER_PIN, ((now % 300) < 100) ? HIGH : LOW); return; }
   if (currentMode == "REVERSE") { digitalWrite(BUZZER_PIN, ((now % 1000) < 300) ? HIGH : LOW); return; }
+  
   digitalWrite(BUZZER_PIN, LOW);
 }
 
@@ -306,7 +387,6 @@ void buildJsonInto() {
   char cellsStr[256] = {0}; int cpos = 0;
   for (int i = 0; i < 23; i++) { int remain = sizeof(cellsStr) - cpos; if (remain > 0) cpos += snprintf(cellsStr + cpos, remain, "%u%s", valCells[i], (i < 22) ? "," : ""); }
 
-  // KALKULASI RANGE PINTAR (BMS AWARE V15.9)
   float avg_wh = (trip_km > 0.5) ? (trip_wh / trip_km) : 0.0;
   int est_range = 0;
   if (avg_wh > 1.0) {
@@ -382,7 +462,7 @@ void updateOLED() {
     display.display(); return;
   }
 
-  if (speed_kmh > 70) {
+  if (oledSpeedWarnEnable && speed_kmh >= oledSpeedWarnLimit) {
     display.setFont(&FreeSansBold18pt7b); display.setCursor(0, 28); display.printf("%d", speed_kmh); display.setFont(); display.setTextSize(1); display.setCursor(88, 15); display.print("KM/H"); display.display(); return;
   }
 
@@ -432,27 +512,21 @@ void updateOLED() {
       break;
     }
     case 6: { 
-      // --- HALAMAN BARU: BATTERY HEALTH & CAPACITY ---
       int16_t x1, y1; uint16_t w, h;
       display.setTextSize(1); display.setCursor(0, 0); display.print("HEALTH"); 
-      
-      String rightHeader = "CAPACITY";
-      display.getTextBounds(rightHeader, 0, 0, &x1, &y1, &w, &h);
-      display.setCursor(128 - w, 0); display.print(rightHeader);
-
-      display.setTextSize(2); 
-      String leftValue = String(valSOH) + "%";
-      display.setCursor(0, 10); display.print(leftValue); 
-      
-      String rightValue = String(valFullCapacity, 1) + "Ah";
-      display.getTextBounds(rightValue, 0, 0, &x1, &y1, &w, &h);
-      display.setCursor(128 - w, 10); display.print(rightValue);
+      String rightHeader = "CAPACITY"; display.getTextBounds(rightHeader, 0, 0, &x1, &y1, &w, &h); display.setCursor(128 - w, 0); display.print(rightHeader);
+      display.setTextSize(2); String leftValue = String(valSOH) + "%"; display.setCursor(0, 10); display.print(leftValue); 
+      String rightValue = String(valFullCapacity, 1) + "Ah"; display.getTextBounds(rightValue, 0, 0, &x1, &y1, &w, &h); display.setCursor(128 - w, 10); display.print(rightValue);
       break;
     }
     case 7: { 
-      // --- SYSTEM INFO SEKARANG PINDAH KE HALAMAN 7 ---
-      display.setTextSize(1); display.setCursor(0, 0);  display.print("WIFI: "); display.print(ssid); display.setCursor(0, 8);  display.print("PASS: "); display.print(password);
-      display.setCursor(0, 16); display.print("NAME: "); display.print(splashText); display.setCursor(0, 24); display.print("FW  : "); display.print(FW_VERSION); break;
+      // V15.12 Tampilan Info Menginformasikan Jenis Memori
+      display.setTextSize(1); 
+      display.setCursor(0, 0);  display.printf("WIFI: %s", ssid.c_str());
+      display.setCursor(0, 8);  display.printf("MEM : %s", memoryInUse.c_str());
+      display.setCursor(0, 16); display.printf("NAME: %s", splashText.c_str()); 
+      display.setCursor(0, 24); display.printf("FW  : %s", FW_VERSION); 
+      break;
     }
   }
   display.display();
@@ -471,10 +545,20 @@ void loop() {
       lastCalcTime = now;
   }
 
+  // --- LOGIKA SIMPAN HYBRID MEMORY ---
   static unsigned long stopTime = 0;
   if (speed_kmh == 0 && (trip_km - last_saved_trip_km >= 0.1)) {
       if (stopTime == 0) stopTime = now;
-      if (now - stopTime > 3000) { preferences.putFloat("trip_km", trip_km); preferences.putFloat("trip_wh", trip_wh); last_saved_trip_km = trip_km; }
+      if (now - stopTime > 3000) { 
+          if (extEepromAvailable) {
+              writeEEPROMFloat(ADDR_TRIP_KM, trip_km); 
+              writeEEPROMFloat(ADDR_TRIP_WH, trip_wh); 
+          } else {
+              preferences.putFloat("trip_km", trip_km); 
+              preferences.putFloat("trip_wh", trip_wh); 
+          }
+          last_saved_trip_km = trip_km; 
+      }
   } else if (speed_kmh > 0) stopTime = 0; 
 
   btnState = (digitalRead(BUTTON_PIN) == LOW);
@@ -486,7 +570,7 @@ void loop() {
       if (inSettingsMode) { settingsCursor++; if (settingsCursor > 3) settingsCursor = 0; 
       } else { 
           if (!bleEnabled) { 
-              currentPage++; if (currentPage > 7) currentPage = 1; // UPDATE MAKSIMAL 7 HALAMAN
+              currentPage++; if (currentPage > 7) currentPage = 1; 
           } else { 
               if (currentPage == 1) currentPage = 5; else currentPage = 1; 
           }
@@ -500,7 +584,14 @@ void loop() {
     } else {
       if (currentPage == 5 && duration >= 3000 && duration < 5000 && !handled3s) { 
           handled3s = true; handled5s = true; 
-          trip_km = 0.0; trip_wh = 0.0; last_saved_trip_km = 0.0; preferences.putFloat("trip_km", 0.0); preferences.putFloat("trip_wh", 0.0);
+          trip_km = 0.0; trip_wh = 0.0; last_saved_trip_km = 0.0; 
+          
+          if (extEepromAvailable) {
+              writeEEPROMFloat(ADDR_TRIP_KM, 0.0); writeEEPROMFloat(ADDR_TRIP_WH, 0.0);
+          } else {
+              preferences.putFloat("trip_km", 0.0); preferences.putFloat("trip_wh", 0.0);
+          }
+
           if(soundEnabled) beepEndTime = millis() + 300;
           display.clearDisplay(); display.setFont(); display.setTextColor(SSD1306_WHITE); display.setTextSize(1); showCenteredText("TRIP RESET TO 0", 15); display.display(); delay(1500);
       }
@@ -513,7 +604,6 @@ void loop() {
   }
   lastBtnState = btnState;
 
-  // AUTO SLEEP KEMBALI KE HALAMAN 1 JIKA TIDAK ADA TOMBOL DITEKAN 30 DETIK (KECUALI HALAMAN 5)
   if (!inSettingsMode && (now - lastButtonPress > 30000) && currentPage != 1 && currentPage != 5 && !showModePopup && !isCharging && speed_kmh <= 70) { currentPage = 1; }
   
   if (now - lastDisplayUpdate > 100) { updateOLED(); lastDisplayUpdate = now; }
