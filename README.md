@@ -35,6 +35,8 @@ Pada versi **V15.1 (Pro Edition)** ini, alat telah dilengkapi dengan **Bluetooth
 7. **Jumper Cap (120 Ohm):** Wajib dipasang pada terminal resistor modul MCP2515 untuk mencegah *noise* data pada CAN Bus.
 8. **Kabel Jumper & Timah Solder:** Secukupnya.
 
+
+atau untuk mempermudah dan menghindari wiring bisa pake pcb https://id.shp.ee/qLKv1pAj
 ---
 
 ## ⚡ 2. Skema Wiring (Jalur Kabel)
