@@ -8,4 +8,33 @@
         <span class="label">TIME SYNCHRONIZATION</span>
         <button onclick="syncTime()" style="width: 100%; background: var(--purple); border: none; padding: 12px; border-radius: 8px; font-weight: bold; color: white; margin-top: 10px; cursor: pointer;">SYNC JAM HP KE MOTOR</button>
     </div>
+    <div class="card">
+    <span class="label">ALARM & SPEED WARNING</span>
+    <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Buzzer Alarm</span>
+            <label class="switch">
+                <input type="checkbox" id="alarmToggle">
+                <span class="slider"></span>
+            </label>
+        </div>
+        
+        <div class="input-group">
+            <input type="number" id="speedLimitInput" placeholder="Batas Speed (KM/H)" min="10" max="150">
+            <button onclick="updateAlarmSettings()">UPDATE ALARM</button>
+        </div>
+        <small style="color: var(--text-main); opacity: 0.6;">
+            Data disimpan di memori: <span id="mem-status" style="color: var(--accent-cyan)">SCANNING...</span>
+        </small>
+    </div>
+</div>
+
+<style>
+.switch { position: relative; display: inline-block; width: 44px; height: 22px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #30363d; transition: .4s; border-radius: 22px; }
+.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+input:checked + .slider { background-color: var(--accent-green); }
+input:checked + .slider:before { transform: translateX(22px); }
+</style>
 </section>
