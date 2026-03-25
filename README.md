@@ -36,7 +36,7 @@ Pada versi **V15.1 (Pro Edition)** ini, alat telah dilengkapi dengan **Bluetooth
 8. **Kabel Jumper & Timah Solder:** Secukupnya.
 
 
-atau untuk mempermudah dan menghindari wiring bisa pake pcb https://id.shp.ee/qLKv1pAj
+Atau untuk mempermudah dan menghindari wiring bisa pake pcb https://id.shp.ee/qLKv1pAj
 ---
 
 ## ⚡ 2. Skema Wiring (Jalur Kabel)
