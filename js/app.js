@@ -134,7 +134,6 @@ function updateUI(data) {
         'avg-wh': (t.avg || 0).toFixed(1),
         'est-range-trip': (t.range || 0) + " km",
         't-ecu': (data.temps?.ctrl || 0) + "°", 't-motor': (data.temps?.motor || 0) + "°", 't-batt': (data.temps?.batt || 0) + "°"
-        'mem-status': (data.sys?.mem === "EXT") ? "EXT (RTC EEPROM)" : "INTERNAL (FLASH)"
     };
 
     for (const [id, val] of Object.entries(vals)) {
@@ -296,25 +295,6 @@ function initCharts() {
     const opt = { responsive:true, maintainAspectRatio:false, scales:{x:{display:false}, y:{display:false}}, plugins:{legend:{display:false}}, elements:{line:{tension:0.4, borderWidth:2}, point:{radius:0}} };
     speedChart = new Chart(ctxS, { type:'line', data:{labels:Array(30).fill(''), datasets:[{data:[...speedHistory], borderColor:'#d29922', fill:true, backgroundColor:'rgba(210,153,34,0.1)'}]}, options:opt });
     currentChart = new Chart(ctxC, { type:'line', data:{labels:Array(30).fill(''), datasets:[{data:[...currentHistory], borderColor:'#58a6ff', fill:true, backgroundColor:'rgba(88,166,255,0.1)'}]}, options:opt });
-}
-
-// --- SETTINGS ALARM (V15.11+) ---
-async function updateAlarmSettings() {
-    if (!rxChar) { alert("Bluetooth belum terhubung!"); return; }
-    
-    const isAlarmOn = document.getElementById('alarmToggle').checked ? 1 : 0;
-    const speedLimit = document.getElementById('speedLimitInput').value.trim();
-    
-    if (speedLimit === "") { alert("Masukkan batas kecepatan!"); return; }
-
-    try {
-        // Format perintah sesuai firmware: ALARM,status,speed_limit
-        const cmd = `ALARM,${isAlarmOn},${speedLimit}`;
-        await rxChar.writeValue(new TextEncoder().encode(cmd));
-        alert(`Alarm ${isAlarmOn ? 'ON' : 'OFF'} di set ke ${speedLimit} KM/H`);
-    } catch (e) {
-        alert("Gagal update alarm: " + e);
-    }
 }
 
 window.addEventListener('DOMContentLoaded', () => loadPage('dash'));
