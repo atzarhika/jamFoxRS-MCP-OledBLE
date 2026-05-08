@@ -34,9 +34,12 @@ Pada versi **V15.1 (Pro Edition)** ini, alat telah dilengkapi dengan **Bluetooth
 6. **Buzzer Aktif 3V/5V:** Untuk *feedback* suara dan peringatan keselamatan.
 7. **Jumper Cap (120 Ohm):** Wajib dipasang pada terminal resistor modul MCP2515 untuk mencegah *noise* data pada CAN Bus.
 8. **Kabel Jumper & Timah Solder:** Secukupnya.
+9. **Modul stepdown Fix 5v MP1584** : Untuk menurunkan tegangan 12v ke 5v dari reducer.
+10. **Kapasitor Elco 47uF 16v 1000uF** : penyimpan muatan listrik sementara dan penstabil arus.
+11. 2x **Kapasitor Keramik 100nF/50V**(U5 & U3) : penyaring noise (filter) frekuensi tinggi, serta decoupling pada rangkaian elektronik.
 
 
-Atau untuk mempermudah dan menghindari wiring bisa pake pcb https://id.shp.ee/qLKv1pAj
+Atau untuk mempermudah dan menghindari kesalahan wiring bisa pake pcb https://id.shp.ee/qLKv1pAj
 ---
 
 ## ⚡ 2. Skema Wiring (Jalur Kabel)
