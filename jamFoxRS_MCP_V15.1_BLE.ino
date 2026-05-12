@@ -19,7 +19,7 @@
 #include <BLE2902.h>
 
 // ================= KONFIGURASI ALAT =================
-const char* FW_VERSION = "V15.16"; // SAFE MODE & DIAGNOSTIC PAGE
+const char* FW_VERSION = "V15.19"; // SUPER MARIO EDITION
 
 // ================= KONFIGURASI PIN =================
 #define SDA_PIN 8       
@@ -33,6 +33,8 @@ const char* FW_VERSION = "V15.16"; // SAFE MODE & DIAGNOSTIC PAGE
 #define BUZZER_PIN 2    
 
 // ================= KONFIGURASI EXTERNAL EEPROM =================
+// Ubah ke 0x57 jika menggunakan modul RTC DS3231 (ZS-042)
+// Ubah ke 0x50 jika menggunakan modul Tiny RTC DS1307
 #define EEPROM_ADDR 0x57   
 #define ADDR_TRIP_KM 0     
 #define ADDR_TRIP_WH 4     
@@ -48,7 +50,7 @@ const int   daylightOffset_sec = 0;
 
 // ================= OBJEK & PREFERENCES =================
 Adafruit_SSD1306 display(128, 32, &Wire, -1);
-RTC_DS3231 rtc;
+RTC_DS3231 rtc; // Gunakan RTC_DS3231 jika pakai ZS-042
 MCP_CAN CAN0(MCP_CS_PIN);
 Preferences preferences;
 
@@ -142,10 +144,11 @@ bool showModePopup = false;
 
 String ssid = "", password = "", splashText = "";
 bool soundEnabled = true, bleEnabled = false, inSettingsMode = false;
+bool buzzerIsPassive = false; 
+bool isBuzzerOn = false; 
 int settingsCursor = 0;
 unsigned long beepEndTime = 0;
 
-// HYBRID MEMORY, DIAGNOSTIC & RESTRICTED MODE (V15.16)
 bool extEepromAvailable = false;
 String memoryInUse = "INTERNAL";
 bool oledOk = false; 
@@ -169,6 +172,34 @@ uint16_t bleTxLen = 0, bleTxOffset = 0;
 bool bleTxInProgress = false;
 uint32_t lastDataSend = 0;
 
+// ================= FUNGSI BUZZER UNIVERSAL =================
+void setBuzzer(bool state, int freq = 2000) {
+  if (!soundEnabled) { 
+      if (isBuzzerOn) { digitalWrite(BUZZER_PIN, LOW); noTone(BUZZER_PIN); isBuzzerOn = false; }
+      return; 
+  }
+  
+  if (state && !isBuzzerOn) { 
+      if (buzzerIsPassive) tone(BUZZER_PIN, freq);
+      else digitalWrite(BUZZER_PIN, HIGH);
+      isBuzzerOn = true;
+  } 
+  else if (!state && isBuzzerOn) {
+      if (buzzerIsPassive) noTone(BUZZER_PIN);
+      else digitalWrite(BUZZER_PIN, LOW);
+      isBuzzerOn = false;
+  }
+}
+
+void playBeep(int duration, int freq = 2000) {
+  if (!soundEnabled) return;
+  if (buzzerIsPassive) { 
+      tone(BUZZER_PIN, freq); delay(duration); noTone(BUZZER_PIN); 
+  } else { 
+      digitalWrite(BUZZER_PIN, HIGH); delay(duration); digitalWrite(BUZZER_PIN, LOW); 
+  }
+}
+
 // ================= BLE CALLBACKS =================
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) { deviceConnected = true; }
@@ -184,7 +215,7 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                 int y, m, d, h, mn, s;
                 if (sscanf(rxStr.c_str(), "TIME,%d,%d,%d,%d,%d,%d", &y, &m, &d, &h, &mn, &s) == 6) {
                     rtc.adjust(DateTime(y, m, d, h, mn, s));
-                    if(soundEnabled) { digitalWrite(BUZZER_PIN, HIGH); delay(100); digitalWrite(BUZZER_PIN, LOW); }
+                    playBeep(150, 2500);
                     Serial.println("[BLE] Waktu berhasil disinkronisasi dari HP!");
                 }
             } 
@@ -193,7 +224,7 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                 if (newSplash.length() > 10) newSplash = newSplash.substring(0, 10);
                 preferences.putString("splash", newSplash);
                 splashText = newSplash; 
-                if(soundEnabled) { digitalWrite(BUZZER_PIN, HIGH); delay(100); digitalWrite(BUZZER_PIN, LOW); }
+                playBeep(150, 2500);
                 Serial.println("[BLE] Splash screen diupdate menjadi: " + newSplash);
             }
             else if (rxStr.startsWith("ALARM,")) {
@@ -206,13 +237,11 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                     if (type == "OLED") {
                         oledSpeedWarnEnable = (en == 1); oledSpeedWarnLimit = limit;
                         preferences.putBool("oledSpdEn", oledSpeedWarnEnable); preferences.putInt("oledSpd", oledSpeedWarnLimit);
-                        Serial.println("[BLE] OLED Alarm disetel: " + String(limit) + " km/h");
                     } else if (type == "BUZZ") {
                         buzzerSpeedWarnEnable = (en == 1); buzzerSpeedWarnLimit = limit;
                         preferences.putBool("buzzSpdEn", buzzerSpeedWarnEnable); preferences.putInt("buzzSpd", buzzerSpeedWarnLimit);
-                        Serial.println("[BLE] BUZZER Alarm disetel: " + String(limit) + " km/h");
                     }
-                    if(soundEnabled) { digitalWrite(BUZZER_PIN, HIGH); delay(100); digitalWrite(BUZZER_PIN, LOW); }
+                    playBeep(150, 2500);
                 }
             }
         }
@@ -250,8 +279,7 @@ void setup() {
   Serial.print("[DIAGNOSTIK] Memeriksa OLED I2C... ");
   oledOk = display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   if (!oledOk) {
-      Serial.println("GAGAL!");
-      Serial.println("  -> SISTEM TETAP BERJALAN DALAM MODE HEADLESS.");
+      Serial.println("GAGAL! SISTEM HEADLESS.");
   } else {
       Serial.println("OK");
   }
@@ -270,6 +298,7 @@ void setup() {
   password = preferences.getString("pass", "1sampai8");
   splashText = preferences.getString("splash", "POLYTRON");
   soundEnabled = preferences.getBool("snd", true);
+  buzzerIsPassive = preferences.getBool("buzzPass", false); 
   bleEnabled = preferences.getBool("ble", false);
   oledSpeedWarnEnable = preferences.getBool("oledSpdEn", true);
   oledSpeedWarnLimit = preferences.getInt("oledSpd", 70);
@@ -281,7 +310,28 @@ void setup() {
       showCenteredText(splashText, 22); display.display();
   }
 
-  Serial.print("[DIAGNOSTIK] Memeriksa RTC DS3231... ");
+  // --- WELCOME MELODY: SUPER MARIO BROS (V15.19) ---
+  if (soundEnabled) {
+      if (buzzerIsPassive) {
+          // Melodi Mario (E6, E6, E6, C6, E6, G6, G5) -> Frekuensi tinggi agar sangat lantang
+          int marioNotes[] = {1319, 1319, 1319, 1047, 1319, 1568, 784}; 
+          int marioDurs[]  = {100,  100,  100,  100,  100,  150,  150}; 
+          int marioDelays[]= {150,  300,  150,  150,  300,  600,  600}; 
+          for (int i = 0; i < 7; i++) {
+              tone(BUZZER_PIN, marioNotes[i]);
+              delay(marioDurs[i]);
+              noTone(BUZZER_PIN);
+              delay(marioDelays[i] - marioDurs[i]); 
+          }
+      } else {
+          digitalWrite(BUZZER_PIN, HIGH); delay(100); digitalWrite(BUZZER_PIN, LOW); delay(100);
+          digitalWrite(BUZZER_PIN, HIGH); delay(200); digitalWrite(BUZZER_PIN, LOW); delay(200);
+      }
+  } else {
+      delay(1500); 
+  }
+
+  Serial.print("[DIAGNOSTIK] Memeriksa RTC... ");
   rtcOk = rtc.begin();
   if (rtcOk) Serial.println("OK"); else Serial.println("GAGAL! (Jam tidak akan akurat)");
 
@@ -294,7 +344,7 @@ void setup() {
   } else {
       extEepromAvailable = false; memoryInUse = "INTERNAL";
       trip_km = preferences.getFloat("trip_km", 0.0); trip_wh = preferences.getFloat("trip_wh", 0.0);
-      Serial.println("TIDAK ADA! (Fallback Internal ESP32)");
+      Serial.println("TIDAK ADA! (Fallback Internal)");
   }
   last_saved_trip_km = trip_km;
 
@@ -307,7 +357,6 @@ void setup() {
       Serial.println("GAGAL FATAL! (Cek SPI/5V)");
   }
 
-  // --- PENERAPAN SAFE MODE JIKA CAN BUS MATI ---
   dashboardRestricted = !canOk; 
 
   if (oledOk && (!canOk || !rtcOk)) {
@@ -317,17 +366,11 @@ void setup() {
       display.print("MEM : "); display.println(extEepromAvailable ? "EXT(OK)" : "INT(FB)");
       display.print("CAN : "); display.println(canOk ? "OK" : "FAIL (Cek Kabel)");
       display.display();
-      
       Serial.println("\n>>> DITEMUKAN MASALAH HARDWARE. MENAHAN LAYAR 5 DETIK...\n");
       delay(5000); 
-      // V15.16: ESP.restart() telah dihapus. Sistem akan lanjut ke Halaman Jam!
   } 
   
-  if (canOk) {
-      CAN0.setMode(MCP_NORMAL); 
-      if(soundEnabled) beepEndTime = millis() + 200;
-      delay(1000); 
-  }
+  if (canOk) { CAN0.setMode(MCP_NORMAL); }
 
   Serial.println("\n>>> BOOTING SELESAI. MASUK KE LOOP UTAMA.\n");
   lastCalcTime = millis();
@@ -353,7 +396,7 @@ void initBLE() {
   pAdvertising->setScanResponse(true);
   pAdvertising->setMinPreferred(0x06); pAdvertising->setMaxPreferred(0x12);
   BLEDevice::startAdvertising();
-  Serial.println("[BLE] Sinyal Bluetooth Votol_BLE mulai memancar.");
+  Serial.println("[BLE] Sinyal Bluetooth Votol_BLE memancar.");
 }
 
 void performNtpSync(bool silent) {
@@ -364,9 +407,9 @@ void performNtpSync(bool silent) {
   while (WiFi.status() != WL_CONNECTED && wifiTimeout < 20) { delay(500); wifiTimeout++; if(oledOk && !silent) { display.print("."); display.display(); } }
   if (WiFi.status() == WL_CONNECTED) {
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer); struct tm timeinfo;
-    if (getLocalTime(&timeinfo)) { rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec)); if(oledOk && !silent) { display.clearDisplay(); display.setCursor(0,10); display.println("SYNC SUCCESS!"); display.display(); } }
+    if (getLocalTime(&timeinfo)) { rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec)); if(oledOk && !silent) { display.clearDisplay(); display.setCursor(0,10); display.println("SYNC SUCCESS!"); display.display(); playBeep(200, 2000); } }
   } else {
-    if(oledOk && !silent) { display.clearDisplay(); display.setCursor(0,10); display.println("WIFI FAILED!"); display.display(); }
+    if(oledOk && !silent) { display.clearDisplay(); display.setCursor(0,10); display.println("WIFI FAILED!"); display.display(); playBeep(500, 500); }
   }
   if(!silent) delay(1500); else delay(1000); 
   WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
@@ -381,14 +424,14 @@ void checkSerialCommands() {
 }
 
 void handleBuzzer() {
-  if (!soundEnabled) { digitalWrite(BUZZER_PIN, LOW); return; }
+  if (!soundEnabled) { setBuzzer(false); return; }
   unsigned long now = millis();
-  if (beepEndTime > now) { digitalWrite(BUZZER_PIN, HIGH); return; }
   
-  if (buzzerSpeedWarnEnable && speed_kmh >= buzzerSpeedWarnLimit) { digitalWrite(BUZZER_PIN, ((now % 300) < 100) ? HIGH : LOW); return; }
-  if (currentMode == "REVERSE") { digitalWrite(BUZZER_PIN, ((now % 1000) < 300) ? HIGH : LOW); return; }
+  if (beepEndTime > now) { setBuzzer(true, 3000); return; } // Frekuensi sangat tinggi agar berisik
+  if (buzzerSpeedWarnEnable && speed_kmh >= buzzerSpeedWarnLimit) { setBuzzer(((now % 300) < 100), 3000); return; }
+  if (currentMode == "REVERSE") { setBuzzer(((now % 1000) < 300), 2000); return; }
   
-  digitalWrite(BUZZER_PIN, LOW);
+  setBuzzer(false);
 }
 
 void readCAN() {
@@ -490,10 +533,20 @@ void handleBLE() {
 }
 
 void executeSettingAction() {
-  if (settingsCursor == 0) { soundEnabled = !soundEnabled; preferences.putBool("snd", soundEnabled);
-  } else if (settingsCursor == 1) { bleEnabled = !bleEnabled; preferences.putBool("ble", bleEnabled); if(oledOk) { display.clearDisplay(); display.setFont(); display.setTextSize(1); showCenteredText("REBOOTING...", 15); display.display(); } delay(1500); ESP.restart(); 
-  } else if (settingsCursor == 2) { if (bleEnabled) { if(oledOk) { display.clearDisplay(); display.setFont(); display.setTextSize(1); showCenteredText("TURN OFF BLE FIRST!", 15); display.display(); delay(2500); } } else { performNtpSync(false); inSettingsMode = false; }
-  } else if (settingsCursor == 3) { inSettingsMode = false; lastButtonPress = millis(); }
+  if (settingsCursor == 0) { 
+      soundEnabled = !soundEnabled; preferences.putBool("snd", soundEnabled); playBeep(100, 3000);
+  } else if (settingsCursor == 1) { 
+      buzzerIsPassive = !buzzerIsPassive; preferences.putBool("buzzPass", buzzerIsPassive); playBeep(150, 3000); 
+  } else if (settingsCursor == 2) { 
+      bleEnabled = !bleEnabled; preferences.putBool("ble", bleEnabled); 
+      if(oledOk) { display.clearDisplay(); display.setFont(); display.setTextSize(1); showCenteredText("REBOOTING...", 15); display.display(); } 
+      delay(1500); ESP.restart(); 
+  } else if (settingsCursor == 3) { 
+      if (bleEnabled) { if(oledOk) { display.clearDisplay(); display.setFont(); display.setTextSize(1); showCenteredText("TURN OFF BLE FIRST!", 15); display.display(); delay(2500); } } 
+      else { performNtpSync(false); inSettingsMode = false; }
+  } else if (settingsCursor == 4) { 
+      inSettingsMode = false; lastButtonPress = millis(); playBeep(100, 2000);
+  }
 }
 
 void updateOLED() {
@@ -503,8 +556,25 @@ void updateOLED() {
   display.clearDisplay(); display.setTextColor(SSD1306_WHITE);
 
   if (inSettingsMode) {
-    display.setFont(); display.setTextSize(1); String opt[4] = {"SOUND  : " + String(soundEnabled ? "ON" : "OFF"), "BLE OUT: " + String(bleEnabled ? "ON" : "OFF"), "SYNC NTP (WIFI)", "EXIT SETTINGS"};
-    for(int i = 0; i < 4; i++) { display.setCursor(0, i * 8); if (settingsCursor == i) display.print(">"); else display.print(" "); display.print(opt[i]); }
+    display.setFont(); display.setTextSize(1); 
+    
+    String opt[5] = {
+        "SOUND  : " + String(soundEnabled ? "ON" : "OFF"), 
+        "TYPE   : " + String(buzzerIsPassive ? "PASSIVE" : "ACTIVE"),
+        "BLE OUT: " + String(bleEnabled ? "ON" : "OFF"), 
+        "SYNC NTP (WIFI)", 
+        "EXIT SETTINGS"
+    };
+    
+    int startIdx = (settingsCursor > 3) ? settingsCursor - 3 : 0;
+    for(int i = 0; i < 4; i++) { 
+        int idx = startIdx + i;
+        if(idx < 5) {
+            display.setCursor(0, i * 8); 
+            if (settingsCursor == idx) display.print(">"); else display.print(" "); 
+            display.print(opt[idx]); 
+        }
+    }
     display.display(); return;
   }
 
@@ -581,7 +651,6 @@ void updateOLED() {
       break;
     }
     case 8: { 
-      // V15.16: HALAMAN DIAGNOSTIK MANUAL (MUNCUL JIKA CAN ERROR)
       display.setTextSize(1); display.setCursor(0, 0); 
       display.println("== DIAGNOSTIC ==");
       display.print("RTC : "); display.println(rtcOk ? "OK" : "ERROR (Cek I2C)");
@@ -594,9 +663,7 @@ void updateOLED() {
 }
 
 void loop() {
-  // V15.16: Mencegah CPU Lag. Jika CAN mati, abaikan fungsi readCAN sepenuhnya!
   if (canOk) { readCAN(); }
-  
   checkSerialCommands(); handleBuzzer(); handleBLE(); 
 
   unsigned long now = millis();
@@ -622,16 +689,14 @@ void loop() {
 
   btnState = (digitalRead(BUTTON_PIN) == LOW);
   if (btnState && !lastBtnState) {
-    btnPressTime = now; isBtnPressed = true; handled3s = false; handled5s = false; if(soundEnabled) beepEndTime = millis() + 50;
+    btnPressTime = now; isBtnPressed = true; handled3s = false; handled5s = false; playBeep(50, 3000);
   } else if (!btnState && lastBtnState) {
     isBtnPressed = false; unsigned long duration = now - btnPressTime;
     if (duration < 3000 && duration > 50) {
-      if (inSettingsMode) { settingsCursor++; if (settingsCursor > 3) settingsCursor = 0; 
+      if (inSettingsMode) { 
+          settingsCursor++; if (settingsCursor > 4) settingsCursor = 0; 
       } else { 
-          
-          // --- LOGIKA TOMBOL RESTRICTED MODE (V15.16) ---
           if (dashboardRestricted) {
-              // Jika CAN Mati, Tombol hanya berputar di Jam (1) dan Diagnostic (8)
               if (currentPage == 1) currentPage = 8; else currentPage = 1;
           } 
           else if (!bleEnabled) { 
@@ -646,7 +711,7 @@ void loop() {
   } else if (isBtnPressed) {
     unsigned long duration = now - btnPressTime;
     if (inSettingsMode) {
-      if (duration >= 3000 && !handled3s) { handled3s = true; if(soundEnabled) beepEndTime = millis() + 100; executeSettingAction(); }
+      if (duration >= 3000 && !handled3s) { handled3s = true; executeSettingAction(); }
     } else {
       if (currentPage == 5 && duration >= 3000 && duration < 5000 && !handled3s) { 
           handled3s = true; handled5s = true; 
@@ -655,19 +720,18 @@ void loop() {
           if (extEepromAvailable) { writeEEPROMFloat(ADDR_TRIP_KM, 0.0); writeEEPROMFloat(ADDR_TRIP_WH, 0.0); } 
           else { preferences.putFloat("trip_km", 0.0); preferences.putFloat("trip_wh", 0.0); }
 
-          if(soundEnabled) beepEndTime = millis() + 300;
+          playBeep(300, 1500);
           if(oledOk) { display.clearDisplay(); display.setFont(); display.setTextColor(SSD1306_WHITE); display.setTextSize(1); showCenteredText("TRIP RESET TO 0", 15); display.display(); delay(1500); }
       }
       else if (duration >= 5000 && !handled5s) { 
           handled5s = true; handled3s = true; inSettingsMode = true; settingsCursor = 0; 
-          digitalWrite(BUZZER_PIN, HIGH); delay(80); digitalWrite(BUZZER_PIN, LOW);  delay(80); digitalWrite(BUZZER_PIN, HIGH); delay(80); digitalWrite(BUZZER_PIN, LOW);
+          playBeep(80, 2000); delay(80); playBeep(80, 2000);
           btnPressTime += 240; 
       }
     }
   }
   lastBtnState = btnState;
 
-  // AUTO SLEEP KEMBALI KE HALAMAN JAM SETELAH 30 DETIK (BERLAKU UNTUK SEMUA HALAMAN TERMASUK DIAGNOSTIC)
   if (!inSettingsMode && (now - lastButtonPress > 30000) && currentPage != 1 && currentPage != 5 && !showModePopup && !isCharging && speed_kmh <= 70) { 
       currentPage = 1; 
   }
