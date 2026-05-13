@@ -32,7 +32,7 @@ Pada versi **V15.1 (Pro Edition)** ini, alat telah dilengkapi dengan **Bluetooth
 4. **Modul Waktu (RTC):** DS3231 (Akurat dengan baterai kancing), antarmuka I2C.
 5. **Tombol Navigasi:** 1 buah *tactile switch* (Push Button).
 6. **Buzzer Aktif ATAU Pasive 3V/5V:** Untuk *feedback* suara dan peringatan keselamatan.
-7. **Jumper Cap (120 Ohm):** Wajib dipasang pada terminal resistor modul MCP2515 untuk mencegah *noise* data pada CAN Bus.
+7. **Jumper Cap (120 Ohm):** Opsional dipasang pada terminal resistor modul MCP2515 untuk mencegah *noise* data pada CAN Bus.
 8. **Kabel Jumper & Timah Solder:** Secukupnya.
 9. **Modul stepdown Fix 5v MP1584** : Untuk menurunkan tegangan 12v ke 5v dari reducer.
 10. **Kapasitor Elco 47uF 16v 1000uF** : penyimpan muatan listrik sementara dan penstabil arus.
