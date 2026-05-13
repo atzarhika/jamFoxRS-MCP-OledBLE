@@ -8,4 +8,53 @@
         <span class="label">TIME SYNCHRONIZATION</span>
         <button onclick="syncTime()" style="width: 100%; background: var(--purple); border: none; padding: 12px; border-radius: 8px; font-weight: bold; color: white; margin-top: 10px; cursor: pointer;">SYNC JAM HP KE MOTOR</button>
     </div>
+    <div class="card">
+    <span class="label">SPEED WARNING SETTING</span>
+
+    <div style="margin-top:15px; display:flex; flex-direction:column; gap:15px;">
+
+        <!-- OLED WARNING -->
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; padding:12px; border-radius:8px; border:1px solid #30363d;">
+            
+            <label style="font-size:14px; font-weight:bold; color:white;">
+                <input type="checkbox" id="oledAlarmEn" checked>
+                OLED WARNING
+            </label>
+
+            <div style="display:flex; gap:5px;">
+                <input type="number"
+                       id="oledAlarmLimit"
+                       value="70"
+                       style="width:70px; text-align:center; background:#161b22; color:white; border:1px solid #30363d; border-radius:6px;">
+
+                <button onclick="sendAlarmOled()"
+                        style="background:var(--cyan); border:none; padding:8px 12px; border-radius:6px; color:white; font-weight:bold;">
+                    SET
+                </button>
+            </div>
+        </div>
+
+        <!-- BUZZER WARNING -->
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; padding:12px; border-radius:8px; border:1px solid #30363d;">
+            
+            <label style="font-size:14px; font-weight:bold; color:white;">
+                <input type="checkbox" id="buzzAlarmEn" checked>
+                BUZZER WARNING
+            </label>
+
+            <div style="display:flex; gap:5px;">
+                <input type="number"
+                       id="buzzAlarmLimit"
+                       value="80"
+                       style="width:70px; text-align:center; background:#161b22; color:white; border:1px solid #30363d; border-radius:6px;">
+
+                <button onclick="sendAlarmBuzzer()"
+                        style="background:var(--orange); border:none; padding:8px 12px; border-radius:6px; color:white; font-weight:bold;">
+                    SET
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
 </section>

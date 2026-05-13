@@ -127,6 +127,7 @@ function updateUI(data) {
         'soc-dash': (data.soc || 0) + "%", 'soc-batt': (data.soc || 0) + "%",
         'soh-val': (h.soh || 0) + "%", 'v-val': (data.volts || 0).toFixed(1) + "V",
         'a-val': (data.amps || 0).toFixed(1) + "A",
+        'cycle-val': (h.cycles || 0),
         'range-val': (t.range || 0) + " km", 'trip-val': (t.km || 0).toFixed(1) + " km",
         'cap-rem': (h.remainCap || 0).toFixed(1) + " Ah",
         'cap-full': (h.fullCap || 0).toFixed(1) + " Ah",
@@ -278,6 +279,44 @@ async function syncTime() {
         await rxChar.writeValue(new TextEncoder().encode(cmd));
         alert("Waktu Berhasil Disinkronkan!");
     } catch(e) { alert(e); }
+}
+
+async function sendAlarmOled() {
+    if (!rxChar) {
+        alert("Hubungkan Bluetooth!");
+        return;
+    }
+
+    const en = document.getElementById('oledAlarmEn').checked ? 1 : 0;
+    const limit = document.getElementById('oledAlarmLimit').value;
+
+    const cmd = `ALARM,OLED,${en},${limit}`;
+
+    try {
+        await rxChar.writeValue(new TextEncoder().encode(cmd));
+        alert("OLED Warning berhasil disimpan!");
+    } catch (e) {
+        alert("Gagal kirim OLED Warning: " + e);
+    }
+}
+
+async function sendAlarmBuzzer() {
+    if (!rxChar) {
+        alert("Hubungkan Bluetooth!");
+        return;
+    }
+
+    const en = document.getElementById('buzzAlarmEn').checked ? 1 : 0;
+    const limit = document.getElementById('buzzAlarmLimit').value;
+
+    const cmd = `ALARM,BUZZ,${en},${limit}`;
+
+    try {
+        await rxChar.writeValue(new TextEncoder().encode(cmd));
+        alert("Buzzer Warning berhasil disimpan!");
+    } catch (e) {
+        alert("Gagal kirim Buzzer Warning: " + e);
+    }
 }
 
 function generateCells() {
