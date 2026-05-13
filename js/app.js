@@ -237,32 +237,181 @@ async function toggleRecord() {
 }
 
 // --- BLUETOOTH & SETTINGS ---
+
+let notificationHandler = null;
+
 async function toggleConnect() {
-    if (isConnected) { if (bluetoothDevice) await bluetoothDevice.gatt.disconnect(); } 
-    else {
+
+    // ===== DISCONNECT =====
+    if (isConnected) {
+
         try {
-            bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ name: 'Votol_BLE' }], optionalServices: [SERVICE_UUID] });
-            const server = await bluetoothDevice.gatt.connect();
-            const service = await server.getPrimaryService(SERVICE_UUID);
-            txChar = await service.getCharacteristic(TX_CHAR_UUID);
-            await txChar.startNotifications();
-            txChar.addEventListener('characteristicvaluechanged', (e) => {
-                let chunk = new TextDecoder().decode(e.target.value); rxBuffer += chunk;
+
+            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                bluetoothDevice.gatt.disconnect();
+            }
+
+        } catch (e) {
+            console.error(e);
+        }
+
+        return;
+    }
+
+    // ===== CONNECT =====
+    try {
+
+        bluetoothDevice = await navigator.bluetooth.requestDevice({
+            filters: [{ name: 'Votol_BLE' }],
+            optionalServices: [SERVICE_UUID]
+        });
+
+        // Event disconnect otomatis
+        bluetoothDevice.addEventListener(
+            'gattserverdisconnected',
+            onDisconnected
+        );
+
+        // Connect GATT
+        const server = await bluetoothDevice.gatt.connect();
+
+        // Ambil service
+        const service = await server.getPrimaryService(SERVICE_UUID);
+
+        // TX Characteristic
+        txChar = await service.getCharacteristic(TX_CHAR_UUID);
+
+        // RX Characteristic
+        rxChar = await service.getCharacteristic(RX_CHAR_UUID);
+
+        // Start notification
+        await txChar.startNotifications();
+
+        // Bersihkan listener lama jika ada
+        if (notificationHandler) {
+            txChar.removeEventListener(
+                'characteristicvaluechanged',
+                notificationHandler
+            );
+        }
+
+        // Notification handler baru
+        notificationHandler = (e) => {
+
+            try {
+
+                let chunk = new TextDecoder().decode(e.target.value);
+
+                rxBuffer += chunk;
+
                 if (rxBuffer.includes('\n')) {
-                    let lines = rxBuffer.split('\n'); rxBuffer = lines.pop();
-                    lines.forEach(l => { if(l.trim()) try { updateUI(JSON.parse(l)); } catch(e){} });
+
+                    let lines = rxBuffer.split('\n');
+
+                    rxBuffer = lines.pop();
+
+                    lines.forEach(line => {
+
+                        if (!line.trim()) return;
+
+                        try {
+
+                            const json = JSON.parse(line);
+
+                            updateUI(json);
+
+                        } catch (err) {
+
+                            console.error("JSON Error:", err);
+
+                        }
+
+                    });
                 }
-            });
-            rxChar = await service.getCharacteristic(RX_CHAR_UUID);
-            setStatus(true);
-        } catch (e) { alert("Koneksi Gagal: " + e); }
+
+            } catch (err) {
+
+                console.error("Notification Error:", err);
+
+            }
+
+        };
+
+        // Pasang listener
+        txChar.addEventListener(
+            'characteristicvaluechanged',
+            notificationHandler
+        );
+
+        // Status online
+        setStatus(true);
+
+        console.log("Bluetooth Connected");
+
+    } catch (e) {
+
+        console.error(e);
+
+        alert("Koneksi Gagal: " + e);
+
+        onDisconnected();
     }
 }
 
-function setStatus(s) { 
-    isConnected = s; 
-    const b = document.getElementById('connectBtn'); if(b) b.innerText = s ? "DISCONNECT" : "CONNECT";
-    const st = document.getElementById('conn-status'); if(st) { st.innerText = s ? "● ONLINE" : "● OFFLINE"; st.style.color = s ? "#3fb950" : "#f85149"; }
+// ===============================
+// STATUS UI
+// ===============================
+
+function setStatus(status) {
+
+    isConnected = status;
+
+    const btn = document.getElementById('connectBtn');
+
+    if (btn) {
+        btn.innerText = status ? "DISCONNECT" : "CONNECT";
+    }
+
+    const st = document.getElementById('conn-status');
+
+    if (st) {
+
+        st.innerText = status
+            ? "● ONLINE"
+            : "● OFFLINE";
+
+        st.style.color = status
+            ? "#3fb950"
+            : "#f85149";
+    }
+}
+
+// ===============================
+// DISCONNECTED HANDLER
+// ===============================
+
+function onDisconnected() {
+
+    console.log("Bluetooth Disconnected");
+
+    // Bersihkan listener
+    if (txChar && notificationHandler) {
+
+        txChar.removeEventListener(
+            'characteristicvaluechanged',
+            notificationHandler
+        );
+    }
+
+    // Reset variable
+    rxChar = null;
+    txChar = null;
+
+    // Reset buffer
+    rxBuffer = "";
+
+    // Update status UI
+    setStatus(false);
 }
 
 async function sendSplash() {
