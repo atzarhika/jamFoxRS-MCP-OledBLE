@@ -85,7 +85,7 @@ Perangkat didesain agar informatif namun tidak memecah konsentrasi.
 4. **Halaman 4 (Power):** Konsumsi daya instan dalam satuan WATT raksasa.
 5. **Halaman 5 (System):** Info WiFi, Password, dan Versi Firmware.
 6. **Halaman 6 (Trip & Range) 🌟 BARU:** Menampilkan Jarak Tempuh (KM), Rata-rata efisiensi (Wh/km), dan Estimasi sisa jarak yang bisa ditempuh baterai.
-   * *Cara Reset:* Buka Halaman 6, lalu **Tekan dan Tahan Tombol selama 3 detik** untuk mereset Trip Meter ke angka 0.
+   * *Cara Reset:* Buka Halaman 6 (Trip), lalu **Tekan dan Tahan Tombol selama 3 detik** untuk mereset Trip Meter ke angka 0.
 
 ### ⚙️ Menu Settings (On-Device)
 Di dalam mode *Settings*, tekan pendek untuk menggeser kursor (`>`), tekan tahan 3 detik untuk mengeksekusi pilihan:
