@@ -65,8 +65,8 @@ Pemasangan pin dioptimalkan untuk ESP32-C3 Super Mini sebagai berikut:
 | | GND | GND | Gabung ke Ground utama dan Ground Motor. |
 | **Buzzer** | **Positif (+)** | **GPIO 2** | Fitur suara & alarm. |
 | | Negatif (-) | GND | |
-| **CAN Motor** | **CAN H** | Terminal **H** | Kabel CAN High dari Motor (Biasanya Oranye/Kuning). |
-| | **CAN L** | Terminal **L** | Kabel CAN Low dari Motor (Biasanya Hijau/Coklat). |
+| **CAN Motor** | **CAN H** | Terminal **H** | Kabel CAN High dari Motor (Abu-abu). |
+| | **CAN L** | Terminal **L** | Kabel CAN Low dari Motor (Hitam). |
 | **Tombol Nav.** | Kaki 1 | **GPIO 3** | Input tombol navigasi halaman & setting. |
 | | Kaki 2 | GND | |
 
