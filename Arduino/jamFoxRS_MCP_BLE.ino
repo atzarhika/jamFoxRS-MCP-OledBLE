@@ -19,7 +19,7 @@
 #include <BLE2902.h>
 
 // ================= KONFIGURASI ALAT =================
-const char* FW_VERSION = "V15.19"; // SUPER MARIO EDITION
+const char* FW_VERSION = "V15.20-beta"; // COMMUNITY REQUEST
 
 // ================= KONFIGURASI PIN =================
 #define SDA_PIN 8       
@@ -33,8 +33,6 @@ const char* FW_VERSION = "V15.19"; // SUPER MARIO EDITION
 #define BUZZER_PIN 2    
 
 // ================= KONFIGURASI EXTERNAL EEPROM =================
-// Ubah ke 0x57 jika menggunakan modul RTC DS3231 (ZS-042)
-// Ubah ke 0x50 jika menggunakan modul Tiny RTC DS1307
 #define EEPROM_ADDR 0x57   
 #define ADDR_TRIP_KM 0     
 #define ADDR_TRIP_WH 4     
@@ -50,7 +48,7 @@ const int   daylightOffset_sec = 0;
 
 // ================= OBJEK & PREFERENCES =================
 Adafruit_SSD1306 display(128, 32, &Wire, -1);
-RTC_DS3231 rtc; // Gunakan RTC_DS3231 jika pakai ZS-042
+RTC_DS3231 rtc; 
 MCP_CAN CAN0(MCP_CS_PIN);
 Preferences preferences;
 
@@ -149,6 +147,7 @@ bool isBuzzerOn = false;
 int settingsCursor = 0;
 unsigned long beepEndTime = 0;
 
+// HYBRID MEMORY & STATUS
 bool extEepromAvailable = false;
 String memoryInUse = "INTERNAL";
 bool oledOk = false; 
@@ -156,10 +155,13 @@ bool rtcOk = false;
 bool canOk = false;
 bool dashboardRestricted = false;
 
+// ALARM & COMMUNITY OPTIONS (V15.20-beta)
 bool oledSpeedWarnEnable = true;
 int oledSpeedWarnLimit = 70;
 bool buzzerSpeedWarnEnable = true;
 int buzzerSpeedWarnLimit = 80;
+bool modePopupEnable = true;
+bool autoSleepEnable = true;
 
 bool btnState = false, lastBtnState = false;
 unsigned long btnPressTime = 0;
@@ -216,7 +218,7 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                 if (sscanf(rxStr.c_str(), "TIME,%d,%d,%d,%d,%d,%d", &y, &m, &d, &h, &mn, &s) == 6) {
                     rtc.adjust(DateTime(y, m, d, h, mn, s));
                     playBeep(150, 2500);
-                    Serial.println("[BLE] Waktu berhasil disinkronisasi dari HP!");
+                    Serial.println("[BLE] Waktu disinkronisasi dari HP.");
                 }
             } 
             else if (rxStr.startsWith("SPLASH,")) {
@@ -225,7 +227,7 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                 preferences.putString("splash", newSplash);
                 splashText = newSplash; 
                 playBeep(150, 2500);
-                Serial.println("[BLE] Splash screen diupdate menjadi: " + newSplash);
+                Serial.println("[BLE] Splash screen diupdate: " + newSplash);
             }
             else if (rxStr.startsWith("ALARM,")) {
                 int comma1 = rxStr.indexOf(',', 0); int comma2 = rxStr.indexOf(',', comma1 + 1); int comma3 = rxStr.indexOf(',', comma2 + 1);
@@ -237,9 +239,30 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                     if (type == "OLED") {
                         oledSpeedWarnEnable = (en == 1); oledSpeedWarnLimit = limit;
                         preferences.putBool("oledSpdEn", oledSpeedWarnEnable); preferences.putInt("oledSpd", oledSpeedWarnLimit);
+                        Serial.println("[BLE] OLED Alarm disetel: " + String(limit) + " km/h");
                     } else if (type == "BUZZ") {
                         buzzerSpeedWarnEnable = (en == 1); buzzerSpeedWarnLimit = limit;
                         preferences.putBool("buzzSpdEn", buzzerSpeedWarnEnable); preferences.putInt("buzzSpd", buzzerSpeedWarnLimit);
+                        Serial.println("[BLE] BUZZER Alarm disetel: " + String(limit) + " km/h");
+                    }
+                    playBeep(150, 2500);
+                }
+            }
+            // V15.20-beta: SETTING TAMBAHAN DARI WEB
+            else if (rxStr.startsWith("SET,")) {
+                int comma1 = rxStr.indexOf(',', 0); int comma2 = rxStr.indexOf(',', comma1 + 1);
+                if (comma1 > 0 && comma2 > 0) {
+                    String type = rxStr.substring(comma1 + 1, comma2);
+                    int val = rxStr.substring(comma2 + 1).toInt();
+                    
+                    if (type == "MODE") {
+                        modePopupEnable = (val == 1);
+                        preferences.putBool("popMode", modePopupEnable);
+                        Serial.println("[BLE] Mode Popup (Inc. Brake) disetel: " + String(modePopupEnable ? "ON" : "OFF"));
+                    } else if (type == "SLEEP") {
+                        autoSleepEnable = (val == 1);
+                        preferences.putBool("slpMode", autoSleepEnable);
+                        Serial.println("[BLE] Auto-Sleep disetel: " + String(autoSleepEnable ? "ON" : "OFF"));
                     }
                     playBeep(150, 2500);
                 }
@@ -278,11 +301,7 @@ void setup() {
   
   Serial.print("[DIAGNOSTIK] Memeriksa OLED I2C... ");
   oledOk = display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-  if (!oledOk) {
-      Serial.println("GAGAL! SISTEM HEADLESS.");
-  } else {
-      Serial.println("OK");
-  }
+  if (!oledOk) { Serial.println("GAGAL! SISTEM HEADLESS."); } else { Serial.println("OK"); }
   
   preferences.begin("cfg", false);
   if (digitalRead(BUTTON_PIN) == LOW) {
@@ -304,32 +323,30 @@ void setup() {
   oledSpeedWarnLimit = preferences.getInt("oledSpd", 70);
   buzzerSpeedWarnEnable = preferences.getBool("buzzSpdEn", true);
   buzzerSpeedWarnLimit = preferences.getInt("buzzSpd", 80);
+  
+  // Load Pengaturan V15.20-beta
+  modePopupEnable = preferences.getBool("popMode", true);
+  autoSleepEnable = preferences.getBool("slpMode", true);
 
   if (oledOk) {
       display.clearDisplay(); display.setFont(&FreeSansBold9pt7b); display.setTextColor(SSD1306_WHITE);
       showCenteredText(splashText, 22); display.display();
   }
 
-  // --- WELCOME MELODY: SUPER MARIO BROS (V15.19) ---
+  // --- WELCOME MELODY: SUPER MARIO BROS ---
   if (soundEnabled) {
       if (buzzerIsPassive) {
-          // Melodi Mario (E6, E6, E6, C6, E6, G6, G5) -> Frekuensi tinggi agar sangat lantang
           int marioNotes[] = {1319, 1319, 1319, 1047, 1319, 1568, 784}; 
           int marioDurs[]  = {100,  100,  100,  100,  100,  150,  150}; 
           int marioDelays[]= {150,  300,  150,  150,  300,  600,  600}; 
           for (int i = 0; i < 7; i++) {
-              tone(BUZZER_PIN, marioNotes[i]);
-              delay(marioDurs[i]);
-              noTone(BUZZER_PIN);
-              delay(marioDelays[i] - marioDurs[i]); 
+              tone(BUZZER_PIN, marioNotes[i]); delay(marioDurs[i]); noTone(BUZZER_PIN); delay(marioDelays[i] - marioDurs[i]); 
           }
       } else {
           digitalWrite(BUZZER_PIN, HIGH); delay(100); digitalWrite(BUZZER_PIN, LOW); delay(100);
           digitalWrite(BUZZER_PIN, HIGH); delay(200); digitalWrite(BUZZER_PIN, LOW); delay(200);
       }
-  } else {
-      delay(1500); 
-  }
+  } else { delay(1500); }
 
   Serial.print("[DIAGNOSTIK] Memeriksa RTC... ");
   rtcOk = rtc.begin();
@@ -351,11 +368,7 @@ void setup() {
   Serial.print("[DIAGNOSTIK] Memeriksa Modul CAN MCP2515... ");
   SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, MCP_CS_PIN);
   canOk = (CAN0.begin(MCP_ANY, CAN_250KBPS, MCP_8MHZ) == CAN_OK);
-  if (canOk) {
-      Serial.println("OK");
-  } else {
-      Serial.println("GAGAL FATAL! (Cek SPI/5V)");
-  }
+  if (canOk) { Serial.println("OK"); } else { Serial.println("GAGAL FATAL! (Cek SPI/5V)"); }
 
   dashboardRestricted = !canOk; 
 
@@ -427,7 +440,7 @@ void handleBuzzer() {
   if (!soundEnabled) { setBuzzer(false); return; }
   unsigned long now = millis();
   
-  if (beepEndTime > now) { setBuzzer(true, 3000); return; } // Frekuensi sangat tinggi agar berisik
+  if (beepEndTime > now) { setBuzzer(true, 3000); return; } 
   if (buzzerSpeedWarnEnable && speed_kmh >= buzzerSpeedWarnLimit) { setBuzzer(((now % 300) < 100), 3000); return; }
   if (currentMode == "REVERSE") { setBuzzer(((now % 1000) < 300), 2000); return; }
   
@@ -442,7 +455,15 @@ void readCAN() {
     if (rxId == 0x0A010810 && len >= 8) {
       uint8_t m = rxBuf[1];
       if (m == 0x00) currentMode = "PARK"; else if (m == 0x61) currentMode = "CHARGE"; else if (m == 0x70) currentMode = "DRIVE"; else if (m == 0x50 || m == 0xF0 || m == 0x30 || m == 0xF8) currentMode = "REVERSE"; else if (m == 0x72 || m == 0xB2) currentMode = "BRAKE"; else if (m == 0xB0) currentMode = "SPORT"; else if (m == 0x78 || m == 0x08) currentMode = "STAND"; 
-      if (currentMode != lastMode) { lastMode = currentMode; if (currentMode != "BRAKE" && currentMode != "STAND") { showModePopup = true; lastModeChange = millis(); } }
+      
+      // V15.20-beta: Popup mencakup semua mode (termasuk BRAKE) jika modePopupEnable aktif
+      if (currentMode != lastMode) { 
+          lastMode = currentMode; 
+          if (modePopupEnable) { 
+              showModePopup = true; 
+              lastModeChange = millis(); 
+          } 
+      }
       rpm = rxBuf[2] | (rxBuf[3] << 8); speed_kmh = (int)(rpm * 0.1033f); tempCtrl = rxBuf[4]; tempMotor = rxBuf[5];
     }
     if (rxId == 0x0E6C0D09 && len >= 5) tempBatt = (rxBuf[0] + rxBuf[1] + rxBuf[2] + rxBuf[3] + rxBuf[4]) / 5;
@@ -732,7 +753,8 @@ void loop() {
   }
   lastBtnState = btnState;
 
-  if (!inSettingsMode && (now - lastButtonPress > 30000) && currentPage != 1 && currentPage != 5 && !showModePopup && !isCharging && speed_kmh <= 70) { 
+  // V15.20-beta: AUTO SLEEP KEMBALI KE HALAMAN JAM (Hanya jika diaktifkan)
+  if (autoSleepEnable && !inSettingsMode && (now - lastButtonPress > 30000) && currentPage != 1 && currentPage != 5 && !showModePopup && !isCharging && speed_kmh <= 70) { 
       currentPage = 1; 
   }
   

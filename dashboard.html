@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>VOTOL Smart Dashboard V15.11</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0d1117">
+    <title>VOTOL Smart Dashboard V15.20-beta</title>
     <style>
         :root { --bg-color: #0d1117; --panel-bg: #161b22; --text-main: #c9d1d9; --accent-cyan: #58a6ff; --accent-green: #3fb950; --accent-orange: #d29922; --accent-red: #f85149; --accent-purple: #bc8cff; }
         * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -111,6 +113,15 @@
                         <button class="btn-small" onclick="sendAlarmBuzzer()">Set</button>
                     </div>
                 </div>
+                
+                <div style="border-top: 1px solid #30363d; margin-top: 5px; padding-top: 15px;"></div>
+                
+                <div class="alarm-row" style="margin-bottom: 10px;">
+                    <label style="color: white; font-size: 14px; font-weight:bold;"><input type="checkbox" id="modePopupEn" checked onchange="sendModeToggle()"> Mode Popup (Inc. Brake)</label>
+                </div>
+                <div class="alarm-row">
+                    <label style="color: white; font-size: 14px; font-weight:bold;"><input type="checkbox" id="autoSleepEn" checked onchange="sendSleepToggle()"> Auto-Sleep to Clock</label>
+                </div>
             </div>
 
             <button class="btn-full" onclick="sendSyncTime()">SINKRONISASI JAM ALAT KE HP</button>
@@ -156,6 +167,9 @@
                 isConnected = true; connectBtn.innerText = "DISCONNECT"; connectBtn.className = "disconnected";
                 document.getElementById('remote-settings').style.display = 'block';
                 log("Terkoneksi & Menerima Data Real-Time!");
+
+                setTimeout(sendSyncTime, 1000); 
+
             } catch (error) { log("Gagal: " + error); }
         }
 
@@ -174,26 +188,21 @@
             let text = document.getElementById('splashInput').value.trim();
             if(text === "") { alert("Nama tidak boleh kosong!"); return; }
             let command = "SPLASH," + text; let encoder = new TextEncoder();
-            try { await bleRxCharacteristic.writeValue(encoder.encode(command)); log("Nama berhasil diupdate!"); alert("Berhasil! Layar sambutan berubah menjadi: " + text); } catch(e) { log("Gagal update Splash: " + e); }
+            try { await bleRxCharacteristic.writeValue(encoder.encode(command)); log("Nama diupdate!"); alert("Splash Screen dirubah menjadi: " + text); } catch(e) { log("Gagal: " + e); }
         }
 
         async function sendSyncTime() {
             if(!bleRxCharacteristic) return; let d = new Date();
             let command = `TIME,${d.getFullYear()},${d.getMonth()+1},${d.getDate()},${d.getHours()},${d.getMinutes()},${d.getSeconds()}`;
-            let encoder = new TextEncoder();
-            try { await bleRxCharacteristic.writeValue(encoder.encode(command)); log("Jam berhasil disinkronisasi!"); alert("Jam di motor Anda sudah sama dengan HP!"); } catch(e) { log("Gagal sinkronisasi waktu: " + e); }
+            try { await bleRxCharacteristic.writeValue(new TextEncoder().encode(command)); log("Jam disinkronisasi!"); } catch(e) { log("Gagal: " + e); }
         }
 
-        // FUNGSI KIRIM ALARM CUSTOM (V15.11)
         async function sendAlarmOled() {
             if(!bleRxCharacteristic) return;
             let en = document.getElementById('oledAlarmEn').checked ? 1 : 0;
             let limit = document.getElementById('oledAlarmLimit').value;
             let command = `ALARM,OLED,${en},${limit}`;
-            try {
-                await bleRxCharacteristic.writeValue(new TextEncoder().encode(command));
-                log("OLED Alarm updated!"); alert("OLED Warning Speed disimpan di angka " + limit + " km/h!");
-            } catch(e) { log("Gagal set OLED Alarm: " + e); }
+            try { await bleRxCharacteristic.writeValue(new TextEncoder().encode(command)); log("OLED Alarm updated!"); } catch(e) { log("Gagal: " + e); }
         }
 
         async function sendAlarmBuzzer() {
@@ -201,10 +210,22 @@
             let en = document.getElementById('buzzAlarmEn').checked ? 1 : 0;
             let limit = document.getElementById('buzzAlarmLimit').value;
             let command = `ALARM,BUZZ,${en},${limit}`;
-            try {
-                await bleRxCharacteristic.writeValue(new TextEncoder().encode(command));
-                log("Buzzer Alarm updated!"); alert("Buzzer Warning Speed disimpan di angka " + limit + " km/h!");
-            } catch(e) { log("Gagal set Buzzer Alarm: " + e); }
+            try { await bleRxCharacteristic.writeValue(new TextEncoder().encode(command)); log("Buzzer Alarm updated!"); } catch(e) { log("Gagal: " + e); }
+        }
+
+        // V15.20-beta: COMMUNITY TOGGLES
+        async function sendModeToggle() {
+            if(!bleRxCharacteristic) return;
+            let en = document.getElementById('modePopupEn').checked ? 1 : 0;
+            let command = `SET,MODE,${en}`;
+            try { await bleRxCharacteristic.writeValue(new TextEncoder().encode(command)); log("Mode Popup settings updated!"); } catch(e) { log("Gagal: " + e); }
+        }
+
+        async function sendSleepToggle() {
+            if(!bleRxCharacteristic) return;
+            let en = document.getElementById('autoSleepEn').checked ? 1 : 0;
+            let command = `SET,SLEEP,${en}`;
+            try { await bleRxCharacteristic.writeValue(new TextEncoder().encode(command)); log("Auto-Sleep settings updated!"); } catch(e) { log("Gagal: " + e); }
         }
 
         function handleNotifications(event) {
@@ -249,6 +270,14 @@
             }
         }
         function log(text) { logEl.innerText = "Status: " + text; }
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('PWA Offline Ready!', reg))
+                .catch(err => console.log('PWA Failed', err));
+            });
+        }
     </script>
 </body>
 </html>
