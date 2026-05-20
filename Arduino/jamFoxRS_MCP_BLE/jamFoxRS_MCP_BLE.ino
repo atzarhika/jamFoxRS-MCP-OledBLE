@@ -19,7 +19,7 @@
 #include <BLE2902.h>
 
 // ================= KONFIGURASI ALAT =================
-const char* FW_VERSION = "V15.31-beta"; // Perbaikan Bug Auto Sleep
+const char* FW_VERSION = "V15.20"; // PopUp & Auto Sleep Custimitation
 
 // ================= KONFIGURASI PIN =================
 #define SDA_PIN 8       
