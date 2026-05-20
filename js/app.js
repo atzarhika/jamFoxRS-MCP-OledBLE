@@ -164,7 +164,6 @@ function updateUI(data) {
     }
 
     // 5. SINKRONISASI PENGATURAN UI (SETTINGS) DENGAN ESP32 LIVE
-    // Bagian ini yang sebelumnya terlewat di file Anda
     if (data.set) {
         let popCb = document.getElementById('modePopupEn');
         let slpCb = document.getElementById('autoSleepEn');
@@ -174,8 +173,23 @@ function updateUI(data) {
         // Pengecekan elemen wajib dilakukan agar tidak error saat berada di halaman selain Settings
         if (popCb && popCb.checked !== (data.set.pop === 1)) popCb.checked = (data.set.pop === 1);
         if (slpCb && slpCb.checked !== (data.set.slp === 1)) slpCb.checked = (data.set.slp === 1);
-        if (olECb && olECb.checked !== (data.set.olE === 1)) olECb.checked = (data.set.olE === 1);
-        if (bzECb && bzECb.checked !== (data.set.bzE === 1)) bzECb.checked = (data.set.bzE === 1);
+
+        // PERBAIKAN: Checkbox OLED & BUZZER
+        if (olECb) {
+            // Berikan fungsi onchange otomatis agar saat dicentang/uncheck langsung tersimpan
+            if (!olECb.onchange) olECb.onchange = sendAlarmOled; 
+            // Jangan timpa centangnya jika elemen ini sedang ditekan/difokuskan oleh user
+            if (document.activeElement !== olECb && olECb.checked !== (data.set.olE === 1)) {
+                olECb.checked = (data.set.olE === 1);
+            }
+        }
+
+        if (bzECb) {
+            if (!bzECb.onchange) bzECb.onchange = sendAlarmBuzzer;
+            if (document.activeElement !== bzECb && bzECb.checked !== (data.set.bzE === 1)) {
+                bzECb.checked = (data.set.bzE === 1);
+            }
+        }
 
         // Update input angka limit alarm hanya jika user sedang tidak mengetik di dalamnya
         let olLInp = document.getElementById('oledAlarmLimit');
@@ -187,6 +201,12 @@ function updateUI(data) {
         if (bzLInp && document.activeElement !== bzLInp && bzLInp.value != data.set.bzL) {
             bzLInp.value = data.set.bzL;
         }
+    }
+
+    // 6. UPDATE INDIKATOR KALIBRASI (AGAR TERLIHAT DI UI)
+    if (data.cal !== undefined) {
+        let calEl = document.getElementById('calib-status');
+        if (calEl) calEl.innerText = data.cal.toFixed(3) + "x";
     }
 }
 
