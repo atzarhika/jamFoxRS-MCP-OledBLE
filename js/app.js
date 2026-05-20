@@ -53,7 +53,7 @@ function collectTelemetry(votolData) {
         speed: parseFloat(votolData.speed) || 0,
         rpm: parseInt(votolData.rpm) || 0,
         soc: votolData.soc || 0,
-        current: votolData.amps || 0 // Tambahkan ini
+        current: votolData.amps || 0 
     });
 }
 
@@ -112,7 +112,6 @@ function updateUI(data) {
         circle.style.setProperty('--deg', `${deg}deg`);
         circle.style.background = `radial-gradient(var(--card-bg) 64%, transparent 66%), conic-gradient(from 180deg, var(--cyan) ${deg}deg, #21262d 0deg)`;
         if (ball) {
-            // Memunculkan bola jika ada RPM
             ball.style.display = rpm > 0 ? "block" : "none";
             const rad = (deg + 180 - 90) * (Math.PI / 180);
             ball.style.transform = `translate(calc(-50% + ${Math.cos(rad)*100}px), calc(-50% + ${Math.sin(rad)*100}px))`;
@@ -163,6 +162,32 @@ function updateUI(data) {
             }
         });
     }
+
+    // 5. SINKRONISASI PENGATURAN UI (SETTINGS) DENGAN ESP32 LIVE
+    // Bagian ini yang sebelumnya terlewat di file Anda
+    if (data.set) {
+        let popCb = document.getElementById('modePopupEn');
+        let slpCb = document.getElementById('autoSleepEn');
+        let olECb = document.getElementById('oledAlarmEn');
+        let bzECb = document.getElementById('buzzAlarmEn');
+        
+        // Pengecekan elemen wajib dilakukan agar tidak error saat berada di halaman selain Settings
+        if (popCb && popCb.checked !== (data.set.pop === 1)) popCb.checked = (data.set.pop === 1);
+        if (slpCb && slpCb.checked !== (data.set.slp === 1)) slpCb.checked = (data.set.slp === 1);
+        if (olECb && olECb.checked !== (data.set.olE === 1)) olECb.checked = (data.set.olE === 1);
+        if (bzECb && bzECb.checked !== (data.set.bzE === 1)) bzECb.checked = (data.set.bzE === 1);
+
+        // Update input angka limit alarm hanya jika user sedang tidak mengetik di dalamnya
+        let olLInp = document.getElementById('oledAlarmLimit');
+        if (olLInp && document.activeElement !== olLInp && olLInp.value != data.set.olL) {
+            olLInp.value = data.set.olL;
+        }
+
+        let bzLInp = document.getElementById('buzzAlarmLimit');
+        if (bzLInp && document.activeElement !== bzLInp && bzLInp.value != data.set.bzL) {
+            bzLInp.value = data.set.bzL;
+        }
+    }
 }
 
 // --- GPX SAVE ---
@@ -170,7 +195,6 @@ function saveGPX() {
     if (gpxDataPoints.length === 0) return;
     
     const now = new Date();
-    // Format Nama File: Votol-YYYYMMDD_HHMMSS.gpx
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
@@ -184,7 +208,7 @@ function saveGPX() {
 <trk><name>Votol Telemetry Session</name><trkseg>`;
 
     gpxDataPoints.forEach(p => {
-        const speedMS = (p.speed / 3.6).toFixed(3); // Konversi km/h ke m/s untuk standar GPX
+        const speedMS = (p.speed / 3.6).toFixed(3);
         
         gpx += `
 <trkpt lat="${p.lat}" lon="${p.lon}">
@@ -237,182 +261,90 @@ async function toggleRecord() {
 }
 
 // --- BLUETOOTH & SETTINGS ---
-
 let notificationHandler = null;
 
 async function toggleConnect() {
-
-    // ===== DISCONNECT =====
     if (isConnected) {
-
         try {
-
             if (bluetoothDevice && bluetoothDevice.gatt.connected) {
                 bluetoothDevice.gatt.disconnect();
             }
-
-        } catch (e) {
-            console.error(e);
-        }
-
+        } catch (e) { console.error(e); }
         return;
     }
 
-    // ===== CONNECT =====
     try {
-
         bluetoothDevice = await navigator.bluetooth.requestDevice({
             filters: [{ name: 'Votol_BLE' }],
             optionalServices: [SERVICE_UUID]
         });
 
-        // Event disconnect otomatis
-        bluetoothDevice.addEventListener(
-            'gattserverdisconnected',
-            onDisconnected
-        );
-
-        // Connect GATT
+        bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
         const server = await bluetoothDevice.gatt.connect();
-
-        // Ambil service
         const service = await server.getPrimaryService(SERVICE_UUID);
-
-        // TX Characteristic
         txChar = await service.getCharacteristic(TX_CHAR_UUID);
-
-        // RX Characteristic
         rxChar = await service.getCharacteristic(RX_CHAR_UUID);
-
-        // Start notification
         await txChar.startNotifications();
 
-        // Bersihkan listener lama jika ada
         if (notificationHandler) {
-            txChar.removeEventListener(
-                'characteristicvaluechanged',
-                notificationHandler
-            );
+            txChar.removeEventListener('characteristicvaluechanged', notificationHandler);
         }
 
-        // Notification handler baru
         notificationHandler = (e) => {
-
             try {
-
                 let chunk = new TextDecoder().decode(e.target.value);
-
                 rxBuffer += chunk;
+                if (rxBuffer.length > 5000) rxBuffer = ""; // Reset jika data tumpuk rusak
 
                 if (rxBuffer.includes('\n')) {
-
                     let lines = rxBuffer.split('\n');
-
                     rxBuffer = lines.pop();
-
                     lines.forEach(line => {
-
                         if (!line.trim()) return;
-
                         try {
-
                             const json = JSON.parse(line);
-
                             updateUI(json);
-
-                        } catch (err) {
-
-                            console.error("JSON Error:", err);
-
-                        }
-
+                        } catch (err) { }
                     });
                 }
-
-            } catch (err) {
-
-                console.error("Notification Error:", err);
-
-            }
-
+            } catch (err) { console.error("Notification Error:", err); }
         };
 
-        // Pasang listener
-        txChar.addEventListener(
-            'characteristicvaluechanged',
-            notificationHandler
-        );
-
-        // Status online
+        txChar.addEventListener('characteristicvaluechanged', notificationHandler);
         setStatus(true);
-
         console.log("Bluetooth Connected");
 
     } catch (e) {
-
         console.error(e);
-
         alert("Koneksi Gagal: " + e);
-
         onDisconnected();
     }
 }
 
-// ===============================
-// STATUS UI
-// ===============================
-
 function setStatus(status) {
-
     isConnected = status;
-
     const btn = document.getElementById('connectBtn');
-
-    if (btn) {
-        btn.innerText = status ? "DISCONNECT" : "CONNECT";
-    }
-
+    if (btn) btn.innerText = status ? "DISCONNECT" : "CONNECT";
+    
     const st = document.getElementById('conn-status');
-
     if (st) {
-
-        st.innerText = status
-            ? "● ONLINE"
-            : "● OFFLINE";
-
-        st.style.color = status
-            ? "#3fb950"
-            : "#f85149";
+        st.innerText = status ? "● ONLINE" : "● OFFLINE";
+        st.style.color = status ? "#3fb950" : "#f85149";
     }
 }
-
-// ===============================
-// DISCONNECTED HANDLER
-// ===============================
 
 function onDisconnected() {
-
     console.log("Bluetooth Disconnected");
-
-    // Bersihkan listener
     if (txChar && notificationHandler) {
-
-        txChar.removeEventListener(
-            'characteristicvaluechanged',
-            notificationHandler
-        );
+        txChar.removeEventListener('characteristicvaluechanged', notificationHandler);
     }
-
-    // Reset variable
-    rxChar = null;
-    txChar = null;
-
-    // Reset buffer
-    rxBuffer = "";
-
-    // Update status UI
+    rxChar = null; txChar = null; rxBuffer = "";
     setStatus(false);
 }
+
+// ===============================
+// FUNGSI SETTINGS (DIKIRIM KE ESP32)
+// ===============================
 
 async function sendSplash() {
     if (!rxChar) { alert("Hubungkan Bluetooth!"); return; }
@@ -431,41 +363,56 @@ async function syncTime() {
 }
 
 async function sendAlarmOled() {
-    if (!rxChar) {
-        alert("Hubungkan Bluetooth!");
-        return;
-    }
-
+    if (!rxChar) { alert("Hubungkan Bluetooth!"); return; }
     const en = document.getElementById('oledAlarmEn').checked ? 1 : 0;
     const limit = document.getElementById('oledAlarmLimit').value;
-
     const cmd = `ALARM,OLED,${en},${limit}`;
-
-    try {
-        await rxChar.writeValue(new TextEncoder().encode(cmd));
-        alert("OLED Warning berhasil disimpan!");
-    } catch (e) {
-        alert("Gagal kirim OLED Warning: " + e);
-    }
+    try { await rxChar.writeValue(new TextEncoder().encode(cmd)); alert("OLED Warning berhasil disimpan!"); } catch (e) { alert("Gagal: " + e); }
 }
 
 async function sendAlarmBuzzer() {
-    if (!rxChar) {
-        alert("Hubungkan Bluetooth!");
+    if (!rxChar) { alert("Hubungkan Bluetooth!"); return; }
+    const en = document.getElementById('buzzAlarmEn').checked ? 1 : 0;
+    const limit = document.getElementById('buzzAlarmLimit').value;
+    const cmd = `ALARM,BUZZ,${en},${limit}`;
+    try { await rxChar.writeValue(new TextEncoder().encode(cmd)); alert("Buzzer Warning berhasil disimpan!"); } catch (e) { alert("Gagal: " + e); }
+}
+
+async function sendTripCalibration() {
+    if(!rxChar) { alert("Hubungkan Bluetooth!"); return; }
+    let real = parseFloat(document.getElementById('realTrip').value);
+    let dash = parseFloat(document.getElementById('dashTrip').value);
+    
+    if(isNaN(real) || isNaN(dash) || dash === 0) {
+        alert("Masukkan angka yang benar! Jarak dashboard tidak boleh 0.");
         return;
     }
 
-    const en = document.getElementById('buzzAlarmEn').checked ? 1 : 0;
-    const limit = document.getElementById('buzzAlarmLimit').value;
-
-    const cmd = `ALARM,BUZZ,${en},${limit}`;
-
-    try {
-        await rxChar.writeValue(new TextEncoder().encode(cmd));
-        alert("Buzzer Warning berhasil disimpan!");
-    } catch (e) {
-        alert("Gagal kirim Buzzer Warning: " + e);
+    let factor = real / dash; 
+    if(factor < 0.5 || factor > 2.0) {
+        alert("Perbedaan jarak terlalu ekstrim! Pastikan inputnya benar.");
+        return;
     }
+
+    let command = "CALIB," + factor.toFixed(4);
+    try { 
+        await rxChar.writeValue(new TextEncoder().encode(command)); 
+        alert("Berhasil! Jarak dan Kecepatan dashboard sekarang dikali " + factor.toFixed(4) + " agar akurat.");
+    } catch(e) { alert("Gagal kalibrasi: " + e); }
+}
+
+async function sendModeToggle() {
+    if(!rxChar) return;
+    let en = document.getElementById('modePopupEn').checked ? 1 : 0;
+    let command = `SET,MODE,${en}`;
+    try { await rxChar.writeValue(new TextEncoder().encode(command)); } catch(e) { console.error(e); }
+}
+
+async function sendSleepToggle() {
+    if(!rxChar) return;
+    let en = document.getElementById('autoSleepEn').checked ? 1 : 0;
+    let command = `SET,SLEEP,${en}`;
+    try { await rxChar.writeValue(new TextEncoder().encode(command)); } catch(e) { console.error(e); }
 }
 
 function generateCells() {
