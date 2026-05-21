@@ -1,6 +1,6 @@
 /**
  * Votol Dash Pro v1.1 - ULTIMATE TEST VERSION
- * Fitur: Dashboard, Mode, GPX (Votol Speed), Wake Lock, Glow-Ball, BMS Detail, & Settings Alert
+ * Fitur: Dashboard, Mode, GPX (Votol Speed), Wake Lock, Glow-Ball, BMS Detail, Settings, & Keyless Tag
  */
 
 const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
@@ -22,6 +22,8 @@ let recordInterval;
 let gpxDataPoints = []; 
 let currentGPS = { lat: 0, lon: 0, alt: 0 };
 let wakeLock = null;
+
+let discoveredDevices = []; // Buffer penampung scan BLE Keyless
 
 // --- GPS & WAKE LOCK ---
 if ("geolocation" in navigator) {
@@ -163,22 +165,18 @@ function updateUI(data) {
         });
     }
 
-    // 5. SINKRONISASI PENGATURAN UI (SETTINGS) DENGAN ESP32 LIVE
+    // 5. SINKRONISASI PENGATURAN UI DENGAN ESP32 LIVE
     if (data.set) {
         let popCb = document.getElementById('modePopupEn');
         let slpCb = document.getElementById('autoSleepEn');
         let olECb = document.getElementById('oledAlarmEn');
         let bzECb = document.getElementById('buzzAlarmEn');
         
-        // Pengecekan elemen wajib dilakukan agar tidak error saat berada di halaman selain Settings
         if (popCb && popCb.checked !== (data.set.pop === 1)) popCb.checked = (data.set.pop === 1);
         if (slpCb && slpCb.checked !== (data.set.slp === 1)) slpCb.checked = (data.set.slp === 1);
 
-        // PERBAIKAN: Checkbox OLED & BUZZER
         if (olECb) {
-            // Berikan fungsi onchange otomatis agar saat dicentang/uncheck langsung tersimpan
             if (!olECb.onchange) olECb.onchange = sendAlarmOled; 
-            // Jangan timpa centangnya jika elemen ini sedang ditekan/difokuskan oleh user
             if (document.activeElement !== olECb && olECb.checked !== (data.set.olE === 1)) {
                 olECb.checked = (data.set.olE === 1);
             }
@@ -191,7 +189,6 @@ function updateUI(data) {
             }
         }
 
-        // Update input angka limit alarm hanya jika user sedang tidak mengetik di dalamnya
         let olLInp = document.getElementById('oledAlarmLimit');
         if (olLInp && document.activeElement !== olLInp && olLInp.value != data.set.olL) {
             olLInp.value = data.set.olL;
@@ -203,7 +200,61 @@ function updateUI(data) {
         }
     }
 
-    // 6. UPDATE INDIKATOR KALIBRASI (AGAR TERLIHAT DI UI)
+    // SINKRONISASI REAL-TIME KEYLESS STATE (FITUR BARU)
+    if (data.keyless) {
+        let keylessCb = document.getElementById('keylessEn');
+        let tag1MacEl = document.getElementById('tag1-mac');
+        let tag1Btn = document.getElementById('tag1-btn');
+        let tag2MacEl = document.getElementById('tag2-mac');
+        let tag2Btn = document.getElementById('tag2-btn');
+        let relayInd = document.getElementById('relay-indicator');
+        let rssiSelect = document.getElementById('keylessRssiInput');
+
+        if (keylessCb && keylessCb.checked !== (data.keyless.en === 1)) {
+            keylessCb.checked = (data.keyless.en === 1);
+        }
+
+        if (rssiSelect && data.keyless.rssiTh !== undefined) {
+            if (document.activeElement !== rssiSelect && rssiSelect.value != data.keyless.rssiTh) {
+                rssiSelect.value = data.keyless.rssiTh;
+            }
+        }
+
+        if (tag1MacEl && tag1Btn) {
+            if (data.keyless.t1 && data.keyless.t1 !== "") {
+                tag1MacEl.innerText = data.keyless.t1;
+                tag1MacEl.style.color = "var(--green)";
+                tag1Btn.style.display = "block";
+            } else {
+                tag1MacEl.innerText = "Belum Terdaftar";
+                tag1MacEl.style.color = "var(--text-dim)";
+                tag1Btn.style.display = "none";
+            }
+        }
+
+        if (tag2MacEl && tag2Btn) {
+            if (data.keyless.t2 && data.keyless.t2 !== "") {
+                tag2MacEl.innerText = data.keyless.t2;
+                tag2MacEl.style.color = "var(--green)";
+                tag2Btn.style.display = "block";
+            } else {
+                tag2MacEl.innerText = "Belum Terdaftar";
+                tag2MacEl.style.color = "var(--text-dim)";
+                tag2Btn.style.display = "none";
+            }
+        }
+
+        if (relayInd) {
+            if (data.keyless.relay === 1) {
+                relayInd.innerText = "TERBUKA (READY/UNLOCKED)";
+                relayInd.style.color = "var(--green)";
+            } else {
+                relayInd.innerText = "TERKUNCI (LOCKED)";
+                relayInd.style.color = "var(--text-dim)";
+            }
+        }
+    }
+
     if (data.cal !== undefined) {
         let calEl = document.getElementById('calib-status');
         if (calEl) calEl.innerText = data.cal.toFixed(3) + "x";
@@ -229,7 +280,6 @@ function saveGPX() {
 
     gpxDataPoints.forEach(p => {
         const speedMS = (p.speed / 3.6).toFixed(3);
-        
         gpx += `
 <trkpt lat="${p.lat}" lon="${p.lon}">
     <ele>${p.ele.toFixed(2)}</ele>
@@ -252,9 +302,7 @@ function saveGPX() {
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; 
-    a.download = fileName; 
-    a.click();
+    a.href = url; a.download = fileName; a.click();
     URL.revokeObjectURL(url);
 }
 
@@ -314,7 +362,7 @@ async function toggleConnect() {
             try {
                 let chunk = new TextDecoder().decode(e.target.value);
                 rxBuffer += chunk;
-                if (rxBuffer.length > 5000) rxBuffer = ""; // Reset jika data tumpuk rusak
+                if (rxBuffer.length > 5000) rxBuffer = ""; 
 
                 if (rxBuffer.includes('\n')) {
                     let lines = rxBuffer.split('\n');
@@ -323,7 +371,16 @@ async function toggleConnect() {
                         if (!line.trim()) return;
                         try {
                             const json = JSON.parse(line);
-                            updateUI(json);
+                            
+                            if (json.scan_status) {
+                                handleWebScanStatus(json.scan_status);
+                            } 
+                            else if (json.disc) {
+                                handleWebScanDevice(json.disc);
+                            } 
+                            else {
+                                updateUI(json);
+                            }
                         } catch (err) { }
                     });
                 }
@@ -433,6 +490,100 @@ async function sendSleepToggle() {
     let en = document.getElementById('autoSleepEn').checked ? 1 : 0;
     let command = `SET,SLEEP,${en}`;
     try { await rxChar.writeValue(new TextEncoder().encode(command)); } catch(e) { console.error(e); }
+}
+
+// ==========================================
+// FUNGSI CONTROL KEYLESS (WEB TO ESP32)
+// ==========================================
+
+async function sendKeylessToggle() {
+    if(!rxChar) { alert("Hubungkan Bluetooth!"); return; }
+    let en = document.getElementById('keylessEn').checked ? 1 : 0;
+    try { await rxChar.writeValue(new TextEncoder().encode(`SET,KEYLESS,${en}`)); } catch(e) { console.error(e); }
+}
+
+async function sendKeylessRssi() {
+    if(!rxChar) return;
+    let val = document.getElementById('keylessRssiInput').value;
+    try {
+        await rxChar.writeValue(new TextEncoder().encode(`KEYRSSI,${val}`));
+        console.log("RSSI Threshold diupdate ke: " + val);
+    } catch(e) { console.error(e); }
+}
+
+async function startBleScan() {
+    if(!rxChar) { alert("Hubungkan Bluetooth!"); return; }
+    discoveredDevices = []; // Reset penampung
+    const container = document.getElementById('scan-results-container');
+    if (container) container.innerHTML = '<span style="color:var(--orange); font-size:12px;">Mencari tag sekitar... (Mohon tunggu 4 detik)</span>';
+    
+    const box = document.getElementById('scan-list-box');
+    if (box) box.style.display = "block";
+
+    try {
+        await rxChar.writeValue(new TextEncoder().encode("SCANBLE"));
+    } catch(e) { console.error(e); }
+}
+
+function handleWebScanStatus(status) {
+    const title = document.getElementById('scan-title');
+    if (status === "START") {
+        if (title) title.innerText = "PENCARIAN SEDANG BERJALAN...";
+    } else if (status === "END") {
+        if (title) title.innerText = `PENCARIAN SELESAI (${discoveredDevices.length})`;
+        renderScanResults();
+    }
+}
+
+function handleWebScanDevice(device) {
+    if (!discoveredDevices.some(d => d.mac === device.mac)) {
+        discoveredDevices.push(device);
+    }
+}
+
+function renderScanResults() {
+    const container = document.getElementById('scan-results-container');
+    if (!container) return;
+    container.innerHTML = "";
+
+    if (discoveredDevices.length === 0) {
+        container.innerHTML = '<span style="color:var(--text-dim); font-size:12px;">Tidak ditemukan perangkat BLE di dekat Anda.</span>';
+        return;
+    }
+
+    discoveredDevices.forEach(d => {
+        container.innerHTML += `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#161b22; padding:8px 10px; border-radius:6px; border:1px solid #30363d;">
+            <div>
+                <span style="font-weight:bold; font-size:13px; color:white;">${d.name}</span><br>
+                <small style="font-family:monospace; color:var(--text-dim); font-size:11px;">${d.mac} [${d.rssi} dBm]</small>
+            </div>
+            <div style="display:flex; gap:5px;">
+                <button onclick="registerTag(1, '${d.mac}')" style="background:var(--cyan); border:none; padding:5px 8px; border-radius:4px; color:white; font-size:10px; font-weight:bold; cursor:pointer;">Set #1</button>
+                <button onclick="registerTag(2, '${d.mac}')" style="background:var(--purple); border:none; padding:5px 8px; border-radius:4px; color:white; font-size:10px; font-weight:bold; cursor:pointer;">Set #2</button>
+            </div>
+        </div>`;
+    });
+}
+
+async function registerTag(slot, mac) {
+    if(!rxChar) return;
+    try {
+        await rxChar.writeValue(new TextEncoder().encode(`ADDTAG,${slot},${mac}`));
+        alert(`Smart Tag #${slot} berhasil didaftarkan ke MAC: ${mac}`);
+        const box = document.getElementById('scan-list-box');
+        if (box) box.style.display = "none";
+    } catch(e) { alert(e); }
+}
+
+async function deleteTag(slot) {
+    if(!rxChar) return;
+    if(confirm(`Apakah Anda yakin ingin menghapus Tag #${slot}?`)) {
+        try {
+            await rxChar.writeValue(new TextEncoder().encode(`DELTAG,${slot}`));
+            alert(`Tag #${slot} berhasil dihapus.`);
+        } catch(e) { alert(e); }
+    }
 }
 
 function generateCells() {

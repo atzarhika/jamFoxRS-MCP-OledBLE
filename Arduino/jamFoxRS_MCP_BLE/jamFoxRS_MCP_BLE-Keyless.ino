@@ -1,0 +1,946 @@
+#include <Wire.h>
+#include <SPI.h>
+#include <mcp_can.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <RTClib.h>
+#include <WiFi.h>
+#include "time.h"
+#include <Preferences.h>
+
+#include <Fonts/FreeSansBold18pt7b.h> 
+#include <Fonts/FreeSansBold12pt7b.h> 
+#include <Fonts/FreeSansBold9pt7b.h> 
+
+// ================= LIBRARY BLE BAWAAN RESMI ESP32 =================
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
+
+// ================= KONFIGURASI ALAT =================
+const char* FW_VERSION = "V15.41-beta"; // BLE Keyless Safety Edition
+
+// ================= KONFIGURASI PIN =================
+#define SDA_PIN 8       
+#define SCL_PIN 9       
+#define SPI_SCK 4       
+#define SPI_MISO 5      
+#define SPI_MOSI 6      
+#define MCP_CS_PIN 7    
+#define MCP_INT_PIN 10  
+#define BUTTON_PIN 3    
+#define BUZZER_PIN 2    
+
+// INPUT OUTPUT RELAY (Menggunakan GPIO20 yang aman dari gangguan Booting ESP32)
+#define RELAY_PIN 20     
+
+// ================= KONFIGURASI EXTERNAL EEPROM =================
+#define EEPROM_ADDR 0x57   
+#define ADDR_TRIP_KM 0     
+#define ADDR_TRIP_WH 4     
+
+// ================= KONFIGURASI NTP & BLE =================
+const char* ntpServer  = "pool.ntp.org";
+const long  gmtOffset_sec = 7 * 3600; 
+const int   daylightOffset_sec = 0;
+
+#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8" // TX
+#define RX_CHAR_UUID        "beb5483e-36e1-4688-b7f5-ea07361b26a9" // RX
+
+// ================= OBJEK & PREFERENCES =================
+Adafruit_SSD1306 display(128, 32, &Wire, -1);
+RTC_DS3231 rtc; 
+MCP_CAN CAN0(MCP_CS_PIN);
+Preferences preferences;
+
+BLEServer* pServer = nullptr;
+BLECharacteristic* pCharacteristic = nullptr;
+BLECharacteristic* pRxCharacteristic = nullptr;
+
+const char* DAY_NAMES[] = {"MINGGU", "SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU"};
+const char* MONTH_NAMES[] = {"JAN", "FEB", "MAR", "APR", "MEI", "JUN", "JUL", "AGU", "SEP", "OKT", "NOV", "DES"};
+
+// ================= TABEL LOOKUP SOC =================
+const uint16_t socToBms[101] = {
+  0, 60,70,80,90,95,105,115,125,135,140,150,160,170,180,185,195,205,215,225,
+  230,240,250,260,270,275,285,295,305,315,320,330,340,350,360,365,375,385,395,405,
+  410,420,430,440,450,455,465,475,485,495,500,510,520,530,540,550,555,565,575,585,
+  590,600,610,620,630,635,645,655,665,675,680,690,700,710,720,725,735,745,755,765,
+  770,780,790,800,810,815,825,835,845,855,860,870,880,890,900,905,915,925,935,945,950
+};
+
+float getSoCFromLookup(uint16_t raw) {
+  if (raw >= socToBms[100]) return 100.0f;
+  if (raw <= socToBms[0]) return 0.0f;
+  for (int i = 0; i < 100; i++) {
+    if (raw >= socToBms[i] && raw <= socToBms[i + 1]) {
+      float range = (float)(socToBms[i + 1] - socToBms[i]);
+      float delta = (float)(raw - socToBms[i]);
+      if (range == 0) return (float)i;
+      return (float)i + (delta / range);
+    }
+  }
+  return 0.0f;
+}
+
+// ================= FUNGSI BACA/TULIS EXTERNAL EEPROM =================
+void writeEEPROMFloat(unsigned int addr, float val) {
+  byte* p = (byte*)(void*)&val;
+  Wire.beginTransmission(EEPROM_ADDR);
+  Wire.write((int)(addr >> 8)); Wire.write((int)(addr & 0xFF));
+  for (byte i = 0; i < 4; i++) { Wire.write(*p++); }
+  Wire.endTransmission(); delay(10); 
+}
+
+float readEEPROMFloat(unsigned int addr) {
+  float val = 0.0; byte* p = (byte*)(void*)&val;
+  Wire.beginTransmission(EEPROM_ADDR);
+  Wire.write((int)(addr >> 8)); Wire.write((int)(addr & 0xFF));
+  if(Wire.endTransmission() != 0) return 0.0; 
+  
+  Wire.requestFrom((uint16_t)EEPROM_ADDR, (uint8_t)4);
+  int timeout = 0;
+  while(Wire.available() < 4 && timeout < 100) { delay(1); timeout++; } 
+  
+  if (Wire.available() >= 4) {
+      for (byte i = 0; i < 4; i++) { *p++ = Wire.read(); }
+  }
+  uint32_t *check = (uint32_t*)&val;
+  if(*check == 0xFFFFFFFF || isnan(val)) return 0.0;
+  return val;
+}
+
+// ================= VARIABEL DATA =================
+int rpm = 0; 
+int speed_kmh = 0;       
+float calc_speed = 0.0f; 
+
+float volts = 0.0; float amps = 0.0; float power_watt = 0.0; int soc = 0;
+int tempCtrl = 0, tempMotor = 0, tempBatt = 0;
+String currentMode = "PARK"; String lastMode = "PARK";
+
+bool isCharging = false; bool chargerConnected = false; bool oriChargerDetected = false;
+float chargerCurrent = 0.0f; 
+unsigned long lastChargerMsg = 0; unsigned long lastOriChargerMsg = 0;
+
+float trip_km = 0.0; float trip_wh = 0.0; float last_saved_trip_km = 0.0;
+unsigned long lastCalcTime = 0;
+
+float valRemainingCapacity = 0.0f; float valFullCapacity = 0.0f;
+int valSOH = 0; uint16_t valCycleCount = 0;
+uint16_t valHighestCellVolt = 0; uint8_t valHighestCellNum = 0;
+uint16_t valLowestCellVolt = 0; uint8_t valLowestCellNum = 0; uint16_t valAvgCellVolt = 0;
+uint8_t valMaxTemp = 0, valMaxTempCell = 0, valMinTemp = 0, valMinTempCell = 0;
+uint8_t valBalanceMode = 0, valBalanceStatus = 0, valBalanceBits[4] = {0};
+uint16_t valCells[23] = {0};
+uint32_t valOdometer = 0;
+char bmsHwVersion[8] = ""; char bmsFwVersion[8] = "";
+bool bmsChargingFlag = false;
+
+uint32_t canMsgCount = 0; uint32_t canMessagesPerSec = 0; uint32_t lastSecond = 0;
+unsigned long heartbeatCounter = 0;
+
+int currentPage = 1;
+unsigned long lastButtonPress = 0, lastModeChange = 0, lastDisplayUpdate = 0;
+bool showModePopup = false;
+
+String ssid = "", password = "", splashText = "";
+bool soundEnabled = true, bleEnabled = false, inSettingsMode = false;
+bool buzzerIsPassive = false; 
+bool isBuzzerOn = false; 
+int settingsCursor = 0;
+unsigned long beepEndTime = 0;
+
+// HYBRID MEMORY & STATUS
+bool extEepromAvailable = false;
+String memoryInUse = "INTERNAL";
+bool oledOk = false; 
+bool rtcOk = false;
+bool canOk = false;
+bool dashboardRestricted = false;
+
+// ALARM & COMMUNITY OPTIONS
+bool oledSpeedWarnEnable = true;
+int oledSpeedWarnLimit = 70;
+bool buzzerSpeedWarnEnable = true;
+int buzzerSpeedWarnLimit = 80;
+bool modePopupEnable = true;
+bool autoSleepEnable = true;
+float tripCalibration = 1.0f; 
+
+// ================= KEYLESS BLE TAG VARIABLES =================
+bool keylessEnabled = false;
+String registeredTag1 = "";
+String registeredTag2 = "";
+unsigned long lastTagSeenTime = 0;
+bool relayState = false;
+bool triggerWebScan = false;
+bool webScanActive = false; 
+unsigned long lastScanTime = 0;
+bool isScanningActive = false;
+int keylessRssiThreshold = -80; // Default limit sensitivitas sinyal (sedang)
+
+bool btnState = false, lastBtnState = false;
+unsigned long btnPressTime = 0;
+bool isBtnPressed = false, handled3s = false, handled5s = false;
+
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+char bleTxBuf[2200];
+uint16_t bleTxLen = 0, bleTxOffset = 0;
+bool bleTxInProgress = false;
+uint32_t lastDataSend = 0;
+
+// ================= FUNGSI BUZZER UNIVERSAL =================
+void setBuzzer(bool state, int freq = 2000) {
+  if (!soundEnabled) { 
+      if (isBuzzerOn) { digitalWrite(BUZZER_PIN, LOW); noTone(BUZZER_PIN); isBuzzerOn = false; }
+      return; 
+  }
+  
+  if (state && !isBuzzerOn) { 
+      if (buzzerIsPassive) tone(BUZZER_PIN, freq);
+      else digitalWrite(BUZZER_PIN, HIGH);
+      isBuzzerOn = true;
+  } 
+  else if (!state && isBuzzerOn) {
+      if (buzzerIsPassive) noTone(BUZZER_PIN);
+      else digitalWrite(BUZZER_PIN, LOW);
+      isBuzzerOn = false;
+  }
+}
+
+void playBeep(int duration, int freq = 2000) {
+  if (!soundEnabled) return;
+  if (buzzerIsPassive) { 
+      tone(BUZZER_PIN, freq); delay(duration); noTone(BUZZER_PIN); 
+  } else { 
+      digitalWrite(BUZZER_PIN, HIGH); delay(duration); digitalWrite(BUZZER_PIN, LOW); 
+  }
+}
+
+// ================= ADV SCAN CALLBACK UNTUK DETEKSI KEYLESS =================
+class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+    void onResult(BLEAdvertisedDevice advertisedDevice) {
+        String address = advertisedDevice.getAddress().toString().c_str();
+        address.toUpperCase();
+        int rssi = advertisedDevice.getRSSI();
+        
+        // Deteksi secara Real-time saat Scanning dengan Filter Jarak (RSSI)
+        if (keylessEnabled && rssi >= keylessRssiThreshold) {
+            if ((registeredTag1.length() > 0 && address == registeredTag1) ||
+                (registeredTag2.length() > 0 && address == registeredTag2)) {
+                lastTagSeenTime = millis(); // Perbarui waktu terakhir melihat tag
+            }
+        }
+
+        // Jika Web UI sedang meminta daftar perangkat sekitar, kirim data secara instant
+        if (webScanActive && pCharacteristic) {
+            String name = advertisedDevice.getName().c_str();
+            if (name.length() == 0) name = "Tag BLE";
+            
+            // Format transmisi instant per perangkat agar menghemat buffer MTU
+            char dBuf[150];
+            snprintf(dBuf, sizeof(dBuf), "{\"disc\":{\"name\":\"%s\",\"mac\":\"%s\",\"rssi\":%d}}\n", name.c_str(), address.c_str(), rssi);
+            pCharacteristic->setValue((uint8_t*)dBuf, strlen(dBuf));
+            pCharacteristic->notify();
+        }
+    }
+};
+
+// Callback saat scan periodik non-blocking selesai
+void scanCompleteCB(BLEScanResults results) {
+    isScanningActive = false;
+    if (webScanActive && pCharacteristic) {
+        webScanActive = false;
+        pCharacteristic->setValue((uint8_t*)"{\"scan_status\":\"END\"}\n", 21);
+        pCharacteristic->notify();
+    }
+    BLEDevice::getScan()->clearResults(); // Bebaskan RAM yang terpakai hasil scan
+}
+
+// ================= BLE RX CALLBACKS =================
+class MyRxCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pChar) {
+        String rxStr = pChar->getValue(); 
+        if (rxStr.length() > 0) {
+            rxStr.trim();
+            if (rxStr.startsWith("TIME,")) {
+                int y, m, d, h, mn, s;
+                if (sscanf(rxStr.c_str(), "TIME,%d,%d,%d,%d,%d,%d", &y, &m, &d, &h, &mn, &s) == 6) {
+                    rtc.adjust(DateTime(y, m, d, h, mn, s));
+                    playBeep(150, 2500);
+                }
+            } 
+            else if (rxStr.startsWith("SPLASH,")) {
+                String newSplash = rxStr.substring(7);
+                if (newSplash.length() > 10) newSplash = newSplash.substring(0, 10);
+                preferences.putString("splash", newSplash);
+                splashText = newSplash; 
+                playBeep(150, 2500);
+            }
+            else if (rxStr.startsWith("ALARM,")) {
+                int comma1 = rxStr.indexOf(',', 0); int comma2 = rxStr.indexOf(',', comma1 + 1); int comma3 = rxStr.indexOf(',', comma2 + 1);
+                if (comma1 > 0 && comma2 > 0 && comma3 > 0) {
+                    String type = rxStr.substring(comma1 + 1, comma2);
+                    int en = rxStr.substring(comma2 + 1, comma3).toInt();
+                    int limit = rxStr.substring(comma3 + 1).toInt();
+
+                    if (type == "OLED") {
+                        oledSpeedWarnEnable = (en == 1); oledSpeedWarnLimit = limit;
+                        preferences.putBool("oledSpdEn", oledSpeedWarnEnable); preferences.putInt("oledSpd", oledSpeedWarnLimit);
+                    } else if (type == "BUZZ") {
+                        buzzerSpeedWarnEnable = (en == 1); buzzerSpeedWarnLimit = limit;
+                        preferences.putBool("buzzSpdEn", buzzerSpeedWarnEnable); preferences.putInt("buzzSpd", buzzerSpeedWarnLimit);
+                    }
+                    playBeep(150, 2500);
+                }
+            }
+            else if (rxStr.startsWith("SET,")) {
+                int comma1 = rxStr.indexOf(',', 0); int comma2 = rxStr.indexOf(',', comma1 + 1);
+                if (comma1 > 0 && comma2 > 0) {
+                    String type = rxStr.substring(comma1 + 1, comma2);
+                    int val = rxStr.substring(comma2 + 1).toInt();
+                    
+                    if (type == "MODE") {
+                        modePopupEnable = (val == 1);
+                        preferences.putBool("popMode", modePopupEnable);
+                    } else if (type == "SLEEP") {
+                        autoSleepEnable = (val == 1);
+                        preferences.putBool("slpMode", autoSleepEnable);
+                    } else if (type == "KEYLESS") {
+                        keylessEnabled = (val == 1);
+                        preferences.putBool("keylessEn", keylessEnabled);
+                        if (!keylessEnabled) {
+                            digitalWrite(RELAY_PIN, HIGH); // Jika dimatikan dari Web, kembalikan ke Bypass (HIGH/ON)
+                            relayState = true;
+                        }
+                    }
+                    playBeep(150, 2500);
+                }
+            }
+            else if (rxStr.startsWith("CALIB,")) {
+                float newCal = rxStr.substring(6).toFloat();
+                if(newCal > 0.5f && newCal < 2.0f) {
+                    tripCalibration = newCal;
+                    preferences.putFloat("tripCal", tripCalibration);
+                    playBeep(200, 3000);
+                }
+            }
+            // ================= CONFIG SMART KEYLESS TAG =================
+            else if (rxStr.startsWith("SCANBLE")) {
+                triggerWebScan = true;
+                playBeep(100, 2000);
+            }
+            else if (rxStr.startsWith("ADDTAG,")) {
+                int c1 = rxStr.indexOf(',');
+                int c2 = rxStr.indexOf(',', c1 + 1);
+                if (c1 > 0 && c2 > 0) {
+                    int slot = rxStr.substring(c1 + 1, c2).toInt();
+                    String mac = rxStr.substring(c2 + 1);
+                    mac.trim(); mac.toUpperCase();
+                    if (slot == 1) {
+                        registeredTag1 = mac;
+                        preferences.putString("tag1", registeredTag1);
+                    } else if (slot == 2) {
+                        registeredTag2 = mac;
+                        preferences.putString("tag2", registeredTag2);
+                    }
+                    playBeep(150, 3000);
+                }
+            }
+            else if (rxStr.startsWith("DELTAG,")) {
+                int slot = rxStr.substring(7).toInt();
+                if (slot == 1) {
+                    registeredTag1 = "";
+                    preferences.putString("tag1", "");
+                } else if (slot == 2) {
+                    registeredTag2 = "";
+                    preferences.putString("tag2", "");
+                }
+                playBeep(150, 1500);
+            }
+            else if (rxStr.startsWith("KEYRSSI,")) {
+                int newRssi = rxStr.substring(8).toInt();
+                if (newRssi >= -100 && newRssi <= -40) {
+                    keylessRssiThreshold = newRssi;
+                    preferences.putInt("keyRssi", keylessRssiThreshold);
+                    playBeep(150, 3000);
+                }
+            }
+        }
+    }
+};
+
+// ================= DEKLARASI FUNGSI =================
+void setup() {
+  Serial.begin(115200);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, HIGH); // Failsafe awal: Bypass ON (Aktif) sebelum inisialisasi selesai
+  
+  delay(150); 
+  
+  // --- HARDWARE CEK: SAFE MODE (WIPING KEYLESS EMERGENCY) ---
+  if (digitalRead(BUTTON_PIN) == LOW) {
+      Preferences prefs;
+      prefs.begin("cfg", false);
+      prefs.putBool("ble", false);       // Nonaktifkan Bluetooth
+      prefs.putBool("keylessEn", false); // Matikan Fitur Keyless
+      prefs.putString("tag1", "");       // Hapus Tag Terdaftar 1
+      prefs.putString("tag2", "");       // Hapus Tag Terdaftar 2
+      prefs.end();
+
+      // Failsafe Darurat: Buka relay agar motor dapat dinyalakan dengan kunci mekanis normal
+      digitalWrite(RELAY_PIN, HIGH);
+      relayState = true;
+
+      Wire.begin(SDA_PIN, SCL_PIN);
+      if(display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+          display.clearDisplay();
+          display.setTextSize(1);
+          display.setTextColor(SSD1306_WHITE);
+          showCenteredText("WIPING ALL BLE KEY", 10);
+          showCenteredText("SAFE MODE ACTIVE", 24);
+          display.display();
+      }
+      Serial.println("[SYSTEM] Safe Mode Aktif: Semua Kunci Dihapus, Relay Menyala (Bypass ON).");
+      
+      // Bunyi Buzzer Peringatan Khusus Safe Mode
+      for(int i=0; i<3; i++) { digitalWrite(BUZZER_PIN, HIGH); delay(200); digitalWrite(BUZZER_PIN, LOW); delay(100); }
+      delay(2000); 
+  }
+
+  WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
+  pinMode(MCP_INT_PIN, INPUT_PULLUP); 
+  pinMode(BUZZER_PIN, OUTPUT); digitalWrite(BUZZER_PIN, LOW);
+
+  Wire.begin(SDA_PIN, SCL_PIN);
+  Wire.setTimeOut(100); 
+  
+  oledOk = display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  preferences.begin("cfg", false);
+
+  ssid = preferences.getString("ssid", "pixel8");      
+  password = preferences.getString("pass", "1sampai8");
+  splashText = preferences.getString("splash", "POLYTRON");
+  soundEnabled = preferences.getBool("snd", true);
+  buzzerIsPassive = preferences.getBool("buzzPass", false); 
+  bleEnabled = preferences.getBool("ble", false);
+  
+  oledSpeedWarnEnable = preferences.getBool("oledSpdEn", true);
+  oledSpeedWarnLimit = preferences.getInt("oledSpd", 70);
+  buzzerSpeedWarnEnable = preferences.getBool("buzzSpdEn", true);
+  buzzerSpeedWarnLimit = preferences.getInt("buzzSpd", 80);
+  modePopupEnable = preferences.getBool("popMode", true);
+  autoSleepEnable = preferences.getBool("slpMode", true);
+  tripCalibration = preferences.getFloat("tripCal", 1.0f);
+
+  // Load Keyless Preferences
+  keylessEnabled = preferences.getBool("keylessEn", false);
+  registeredTag1 = preferences.getString("tag1", "");
+  registeredTag2 = preferences.getString("tag2", "");
+  keylessRssiThreshold = preferences.getInt("keyRssi", -80);
+
+  if (oledOk) {
+      display.clearDisplay(); display.setFont(&FreeSansBold9pt7b); display.setTextColor(SSD1306_WHITE);
+      showCenteredText(splashText, 22); display.display();
+  }
+
+  if (soundEnabled) {
+      if (buzzerIsPassive) {
+          int marioNotes[] = {1319, 1319, 1319, 1047, 1319, 1568, 784}; 
+          int marioDurs[]  = {100,  100,  100,  100,  100,  150,  150}; 
+          int marioDelays[]= {150,  300,  150,  150,  300,  600,  600}; 
+          for (int i = 0; i < 7; i++) {
+              tone(BUZZER_PIN, marioNotes[i]); delay(marioDurs[i]); noTone(BUZZER_PIN); delay(marioDelays[i] - marioDurs[i]); 
+          }
+      } else {
+          digitalWrite(BUZZER_PIN, HIGH); delay(100); digitalWrite(BUZZER_PIN, LOW); delay(100);
+          digitalWrite(BUZZER_PIN, HIGH); delay(200); digitalWrite(BUZZER_PIN, LOW); delay(200);
+      }
+  } else { delay(1500); }
+
+  rtcOk = rtc.begin();
+
+  Wire.beginTransmission(EEPROM_ADDR);
+  if (Wire.endTransmission() == 0) {
+      extEepromAvailable = true; memoryInUse = "EXT(RTC)";
+      trip_km = readEEPROMFloat(ADDR_TRIP_KM); trip_wh = readEEPROMFloat(ADDR_TRIP_WH);
+  } else {
+      extEepromAvailable = false; memoryInUse = "INTERNAL";
+      trip_km = preferences.getFloat("trip_km", 0.0); trip_wh = preferences.getFloat("trip_wh", 0.0);
+  }
+  last_saved_trip_km = trip_km;
+
+  SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, MCP_CS_PIN);
+  canOk = (CAN0.begin(MCP_ANY, CAN_250KBPS, MCP_8MHZ) == CAN_OK);
+  dashboardRestricted = !canOk; 
+
+  if (oledOk && (!canOk || !rtcOk)) {
+      display.clearDisplay(); display.setFont(); display.setTextSize(1); display.setCursor(0, 0);
+      display.println("== SYSTEM WARNING ==");
+      display.print("RTC : "); display.println(rtcOk ? "OK" : "ERROR");
+      display.print("MEM : "); display.println(extEepromAvailable ? "EXT(OK)" : "INT(FB)");
+      display.print("CAN : "); display.println(canOk ? "OK" : "FAIL (Cek Kabel)");
+      display.display();
+      delay(5000); 
+  } 
+  
+  if (canOk) { CAN0.setMode(MCP_NORMAL); }
+  lastCalcTime = millis();
+  if (bleEnabled) { initBLE(); }
+}
+
+void initBLE() {
+  if (pServer != nullptr) return; 
+  BLEDevice::init("Votol_BLE");
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+  
+  pCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+  pCharacteristic->addDescriptor(new BLE2902());
+  
+  pRxCharacteristic = pService->createCharacteristic(RX_CHAR_UUID, BLECharacteristic::PROPERTY_WRITE);
+  pRxCharacteristic->setCallbacks(new MyRxCallbacks());
+
+  pService->start();
+  
+  // Set inisialisasi BLE Scanner bawaan
+  BLEScan* pBLEScan = BLEDevice::getScan();
+  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  pBLEScan->setActiveScan(true);
+  pBLEScan->setInterval(100);
+  pBLEScan->setWindow(99);
+
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06); pAdvertising->setMaxPreferred(0x12);
+  BLEDevice::startAdvertising();
+}
+
+void performNtpSync(bool silent) {
+  if(oledOk && !silent) { display.clearDisplay(); display.setFont(); display.setCursor(0,0); display.println("WIFI SYNCING..."); display.print("SSID: "); display.println(ssid); display.display(); }
+  WiFi.mode(WIFI_STA); WiFi.disconnect(); delay(100);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  int wifiTimeout = 0;
+  while (WiFi.status() != WL_CONNECTED && wifiTimeout < 20) { delay(500); wifiTimeout++; if(oledOk && !silent) { display.print("."); display.display(); } }
+  if (WiFi.status() == WL_CONNECTED) {
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer); struct tm timeinfo;
+    if (getLocalTime(&timeinfo)) { rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec)); if(oledOk && !silent) { display.clearDisplay(); display.setCursor(0,10); display.println("SYNC SUCCESS!"); display.display(); playBeep(200, 2000); } }
+  } else {
+    if(oledOk && !silent) { display.clearDisplay(); display.setCursor(0,10); display.println("WIFI FAILED!"); display.display(); playBeep(500, 500); }
+  }
+  if(!silent) delay(1500); else delay(1000); 
+  WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
+}
+
+void checkSerialCommands() {
+  if (Serial.available()) {
+    String input = Serial.readStringUntil('\n'); input.trim();
+    if (input.startsWith("WIFI,")) { int c1 = input.indexOf(','); int c2 = input.indexOf(',', c1 + 1); if (c1 > 0 && c2 > 0) { preferences.putString("ssid", input.substring(c1 + 1, c2)); preferences.putString("pass", input.substring(c2 + 1)); ESP.restart(); } }
+    else if (input.startsWith("SPLASH,")) { int c = input.indexOf(','); if (c > 0) { String s = input.substring(c + 1); if (s.length() > 10) s = s.substring(0, 10); preferences.putString("splash", s); ESP.restart(); } }
+  }
+}
+
+void handleBuzzer() {
+  if (!soundEnabled) { setBuzzer(false); return; }
+  unsigned long now = millis();
+  
+  if (beepEndTime > now) { setBuzzer(true, 3000); return; } 
+  if (buzzerSpeedWarnEnable && speed_kmh >= buzzerSpeedWarnLimit) { setBuzzer(((now % 300) < 100), 3000); return; }
+  if (currentMode == "REVERSE") { setBuzzer(((now % 1000) < 300), 2000); return; }
+  
+  setBuzzer(false);
+}
+
+void readCAN() {
+  while(CAN0.checkReceive() == CAN_MSGAVAIL) {
+    long unsigned int rxId; unsigned char len = 0; unsigned char rxBuf[8];
+    CAN0.readMsgBuf(&rxId, &len, rxBuf); rxId = rxId & 0x1FFFFFFF; canMsgCount++;
+
+    if (rxId == 0x0A010810 && len >= 8) {
+      uint8_t m = rxBuf[1];
+      if (m == 0x00) currentMode = "PARK"; else if (m == 0x61) currentMode = "CHARGE"; else if (m == 0x70) currentMode = "DRIVE"; else if (m == 0x50 || m == 0xF0 || m == 0x30 || m == 0xF8) currentMode = "REVERSE"; else if (m == 0x72 || m == 0xB2) currentMode = "BRAKE"; else if (m == 0xB0) currentMode = "SPORT"; else if (m == 0x78 || m == 0x08) currentMode = "STAND"; 
+      
+      if (currentMode != lastMode) { 
+          lastMode = currentMode; 
+          if (modePopupEnable) { showModePopup = true; lastModeChange = millis(); } 
+      }
+      rpm = rxBuf[2] | (rxBuf[3] << 8); 
+      
+      float std_speed = rpm * 0.1033f;
+      speed_kmh = (int)std_speed; 
+      calc_speed = std_speed * tripCalibration; 
+      
+      tempCtrl = rxBuf[4]; tempMotor = rxBuf[5];
+    }
+    if (rxId == 0x0E6C0D09 && len >= 5) tempBatt = (rxBuf[0] + rxBuf[1] + rxBuf[2] + rxBuf[3] + rxBuf[4]) / 5;
+    if (rxId == 0x0A6D0D09 && len >= 8) {
+      volts = ((rxBuf[0] << 8) | rxBuf[1]) * 0.1f; int16_t iRawS = (int16_t)((rxBuf[2] << 8) | rxBuf[3]); amps = iRawS * 0.1f; if (abs(amps) < 0.2) amps = 0.0; power_watt = volts * amps;
+      valRemainingCapacity = ((rxBuf[4] << 8) | rxBuf[5]) * 0.1f; valFullCapacity = ((rxBuf[6] << 8) | rxBuf[7]) * 0.1f;
+    }
+    if (rxId == 0x0A6E0D09 && len >= 6) { soc = (int)getSoCFromLookup((uint16_t)((rxBuf[0] << 8) | rxBuf[1])); valSOH = (int)(((rxBuf[2] << 8) | rxBuf[3]) * 0.1f); if (valSOH > 100) valSOH = 100; valCycleCount = (rxBuf[4] << 8) | rxBuf[5]; }
+    if (rxId == 0x0A6F0D09 && len >= 8) { valHighestCellVolt = (rxBuf[0] << 8) | rxBuf[1]; valHighestCellNum = rxBuf[2]; valLowestCellVolt = (rxBuf[3] << 8) | rxBuf[4];  valLowestCellNum = rxBuf[5]; valAvgCellVolt = (rxBuf[6] << 8) | rxBuf[7]; }
+    if (rxId == 0x0A700D09 && len >= 6) { valMaxTemp = rxBuf[0]; valMaxTempCell = rxBuf[1]; valMinTemp = rxBuf[4]; valMinTempCell = rxBuf[5]; }
+    if (rxId == 0x0A730D09 && len >= 6) { valBalanceMode = rxBuf[0]; valBalanceStatus = rxBuf[1]; valBalanceBits[0] = rxBuf[2]; valBalanceBits[1] = rxBuf[3]; valBalanceBits[2] = rxBuf[4]; valBalanceBits[3] = rxBuf[5]; }
+    if ((rxId & 0xFFF0FFFF) == 0x0E600D09) {
+      int baseIndex = -1; switch (rxId) { case 0x0E640D09: baseIndex = 0; break; case 0x0E650D09: baseIndex = 4; break; case 0x0E660D09: baseIndex = 8; break; case 0x0E670D09: baseIndex = 12; break; case 0x0E680D09: baseIndex = 16; break; case 0x0E690D09: baseIndex = 20; break; }
+      if (baseIndex >= 0) { for (int i = 0; i < 4 && (baseIndex + i) < 23; i++) { int off = i * 2; if (off + 1 < len) valCells[baseIndex + i] = (rxBuf[off] << 8) | rxBuf[off + 1]; } }
+    }
+    if (rxId == 0x0AB40D09 && len >= 1) bmsChargingFlag = (rxBuf[0] == 0x01);
+    if (rxId == 0x0A750D09 && len >= 5) { memcpy((void*)bmsHwVersion, rxBuf, 6); bmsHwVersion[6] = '\0'; }
+    if (rxId == 0x0A760D09 && len >= 5) { memcpy((void*)bmsFwVersion, rxBuf, 6); bmsFwVersion[6] = '\0'; }
+    if ((rxId == 0x1810D0F3 || rxId == 0x1811D0F3) && len >= 5) { chargerCurrent = ((uint16_t)((rxBuf[2] << 8) | rxBuf[3])) * 0.1f; chargerConnected = true; lastChargerMsg = millis(); }
+    if (rxId == 0x10261041) { oriChargerDetected = true; lastOriChargerMsg = millis(); }
+  }
+  if (millis() - lastChargerMsg > 5000) { chargerConnected = false; chargerCurrent = 0.0f; }
+  if (millis() - lastOriChargerMsg > 5000) oriChargerDetected = false;
+  isCharging = (chargerConnected || oriChargerDetected);
+  uint32_t nowSec = millis() / 1000; if (nowSec != lastSecond) { canMessagesPerSec = canMsgCount; canMsgCount = 0; lastSecond = nowSec; }
+}
+
+// ================= KONTROL SCANNING & DETEKSI KEYLESS =================
+void handleKeylessScan() {
+    // FAILSAFE LOGIC: Jika Bluetooth mati, atau Fitur Keyless di-OFF-kan dari HP
+    // Relay SSR dipaksa ON (HIGH) agar motor bisa diaktifkan/distarter pakai kunci mekanik standar.
+    if (!bleEnabled || !keylessEnabled) {
+        digitalWrite(RELAY_PIN, HIGH);
+        relayState = true;
+        return;
+    }
+
+    unsigned long now = millis();
+
+    // 1. Logika Keamanan & Keselamatan Relay (Safety Interlock):
+    // Kunci relay hanya jika motor diam sempurna (Speed == 0 & RPM == 0) untuk menghindari power mati di jalan raya!
+    if (now - lastTagSeenTime < 20000 || speed_kmh > 0 || rpm > 0) {
+        digitalWrite(RELAY_PIN, HIGH);
+        relayState = true;
+    } else {
+        digitalWrite(RELAY_PIN, LOW); // Tag menjauh -> Kunci SSR Relay! (Immobilizer Aktif)
+        relayState = false;
+    }
+
+    // 2. Scan Trigger untuk Web UI (Asynchronous, Non-Blocking)
+    if (triggerWebScan) {
+        triggerWebScan = false;
+        isScanningActive = true;
+        webScanActive = true;
+        
+        // Kirim penanda scan dimulai
+        if (pCharacteristic) {
+            pCharacteristic->setValue((uint8_t*)"{\"scan_status\":\"START\"}\n", 23);
+            pCharacteristic->notify();
+        }
+
+        // Jalankan scan 4 detik secara non-blocking agar OLED & CAN tetap responsif!
+        BLEDevice::getScan()->start(4, &scanCompleteCB, false); 
+        lastScanTime = millis();
+        return;
+    }
+
+    // 3. Scan Periodik Non-Blocking di Background (Scan 2 detik setiap 8 detik)
+    if (now - lastScanTime > 8000 && !isScanningActive) {
+        isScanningActive = true;
+        BLEDevice::getScan()->start(2, &scanCompleteCB, false); 
+        lastScanTime = now;
+    }
+}
+
+void buildJsonInto() {
+  int cellDelta = 0; uint16_t minCell = 9999, maxCell = 0;
+  for (int i = 0; i < 23; i++) { if (valCells[i] > 0 && valCells[i] < minCell) minCell = valCells[i]; if (valCells[i] > maxCell) maxCell = valCells[i]; }
+  if (maxCell >= minCell) cellDelta = (int)maxCell - (int)minCell;
+
+  char balanceCells[100] = {0}; int bpos = 0;
+  for (int i = 0; i < 23; i++) { bool isBalancing = (valBalanceBits[i / 8] & (1 << (i % 8))) != 0; int remain = sizeof(balanceCells) - bpos; if (remain > 0) bpos += snprintf(balanceCells + bpos, remain, "%d%s", isBalancing ? 1 : 0, (i < 22) ? "," : ""); }
+
+  char cellsStr[256] = {0}; int cpos = 0;
+  for (int i = 0; i < 23; i++) { int remain = sizeof(cellsStr) - cpos; if (remain > 0) cpos += snprintf(cellsStr + cpos, remain, "%u%s", valCells[i], (i < 22) ? "," : ""); }
+
+  float avg_wh = (trip_km > 0.5) ? (trip_wh / trip_km) : 0.0;
+  int est_range = 0;
+  if (avg_wh > 1.0) {
+      float dynamic_1_percent_wh = (valFullCapacity > 10.0) ? (valFullCapacity * 0.72) : 39.6; 
+      est_range = (int)((dynamic_1_percent_wh * soc) / avg_wh);
+      if (est_range > 130) est_range = 130; 
+  }
+
+  // Mengirim status pengaturan (set), kalibrasi & KEYLESS data ke Web UI
+  bleTxLen = snprintf(bleTxBuf, sizeof(bleTxBuf),
+    "{\"rpm\":%d,\"speed\":%d,\"mode\":\"%s\",\"volts\":%.1f,\"amps\":%.1f,\"power\":%.0f,\"soc\":%d,"
+    "\"trip\":{\"km\":%.1f,\"avg\":%.1f,\"range\":%d},\"cal\":%.3f,"
+    "\"temps\":{\"ctrl\":%d,\"motor\":%d,\"batt\":%d},\"cells\":[%s],\"cellDelta\":%d,"
+    "\"canRate\":%lu,\"odometer\":%lu,\"health\":{\"soh\":%d,\"cycles\":%u,\"remainCap\":%.1f,\"fullCap\":%.1f},"
+    "\"cellVoltStats\":{\"highest\":%u,\"highestCell\":%u,\"lowest\":%u,\"lowestCell\":%u,\"avg\":%u},"
+    "\"tempStats\":{\"max\":%u,\"maxCell\":%u,\"min\":%u,\"minCell\":%u},"
+    "\"balance\":{\"mode\":%u,\"status\":%u,\"cells\":[%s]},"
+    "\"charger\":{\"on\":%d,\"v\":%.1f,\"a\":%.1f,\"ori\":%d},"
+    "\"set\":{\"pop\":%d,\"slp\":%d,\"olE\":%d,\"olL\":%d,\"bzE\":%d,\"bzL\":%d},"
+    "\"keyless\":{\"en\":%d,\"t1\":\"%s\",\"t2\":\"%s\",\"relay\":%d,\"rssiTh\":%d},"
+    "\"bms\":{\"hw\":\"%s\",\"fw\":\"%s\"},\"hb\":%lu}\n",
+    rpm, speed_kmh, currentMode.c_str(), volts, amps, power_watt, soc,
+    trip_km, avg_wh, est_range, tripCalibration,
+    tempCtrl, tempMotor, tempBatt, cellsStr, cellDelta,
+    (unsigned long)canMessagesPerSec, (unsigned long)valOdometer,
+    valSOH, valCycleCount, valRemainingCapacity, valFullCapacity,
+    valHighestCellVolt, valHighestCellNum, valLowestCellVolt, valLowestCellNum, valAvgCellVolt,
+    valMaxTemp, valMaxTempCell, valMinTemp, valMinTempCell,
+    valBalanceMode, valBalanceStatus, balanceCells,
+    bmsChargingFlag ? 1 : 0, volts, (chargerCurrent > 0.1f) ? chargerCurrent : fabs(amps),
+    oriChargerDetected ? 1 : 0,
+    modePopupEnable ? 1 : 0, autoSleepEnable ? 1 : 0, oledSpeedWarnEnable ? 1 : 0, oledSpeedWarnLimit, buzzerSpeedWarnEnable ? 1 : 0, buzzerSpeedWarnLimit,
+    keylessEnabled ? 1 : 0, registeredTag1.c_str(), registeredTag2.c_str(), relayState ? 1 : 0, keylessRssiThreshold,
+    bmsHwVersion, bmsFwVersion, (unsigned long)heartbeatCounter++
+  );
+}
+
+void handleBLE() {
+  if (!bleEnabled) return;
+  if (!deviceConnected && oldDeviceConnected) { delay(50); BLEDevice::startAdvertising(); oldDeviceConnected = deviceConnected; }
+  if (deviceConnected && !oldDeviceConnected) { oldDeviceConnected = deviceConnected; }
+
+  if (deviceConnected) {
+    uint32_t now = millis();
+    if (!bleTxInProgress && (now - lastDataSend >= 200)) { lastDataSend = now; buildJsonInto(); bleTxOffset = 0; bleTxInProgress = true; }
+    if (bleTxInProgress) {
+      const uint32_t startUs = micros(); int sent = 0;
+      while (bleTxInProgress && sent < 4 && (micros() - startUs) < 10000) {
+        int remain = bleTxLen - bleTxOffset; if (remain <= 0) { bleTxInProgress = false; break; }
+        int chunkLen = (remain > 200) ? 200 : remain; pCharacteristic->setValue((uint8_t*)(bleTxBuf + bleTxOffset), chunkLen);
+        pCharacteristic->notify(); bleTxOffset += chunkLen; sent++;
+      }
+      if (bleTxOffset >= bleTxLen) bleTxInProgress = false;
+    }
+  }
+}
+
+void executeSettingAction() {
+  if (settingsCursor == 0) { 
+      soundEnabled = !soundEnabled; preferences.putBool("snd", soundEnabled); playBeep(100, 3000);
+  } else if (settingsCursor == 1) { 
+      buzzerIsPassive = !buzzerIsPassive; preferences.putBool("buzzPass", buzzerIsPassive); playBeep(150, 3000); 
+  } else if (settingsCursor == 2) { 
+      bleEnabled = !bleEnabled; preferences.putBool("ble", bleEnabled); 
+      if(oledOk) { display.clearDisplay(); display.setFont(); display.setTextSize(1); showCenteredText("REBOOTING...", 15); display.display(); } 
+      delay(1500); ESP.restart(); 
+  } else if (settingsCursor == 3) { 
+      if (bleEnabled) { if(oledOk) { display.clearDisplay(); display.setFont(); display.setTextSize(1); showCenteredText("TURN OFF BLE FIRST!", 15); display.display(); delay(2500); } } 
+      else { performNtpSync(false); inSettingsMode = false; }
+  } else if (settingsCursor == 4) { // POPUP TOGGLE
+      modePopupEnable = !modePopupEnable; preferences.putBool("popMode", modePopupEnable); playBeep(100, 3000);
+  } else if (settingsCursor == 5) { // SLEEP TOGGLE
+      autoSleepEnable = !autoSleepEnable; preferences.putBool("slpMode", autoSleepEnable); playBeep(100, 3000);
+  } else if (settingsCursor == 6) { 
+      inSettingsMode = false; lastButtonPress = millis(); playBeep(100, 2000);
+  }
+}
+
+void updateOLED() {
+  if (!oledOk) return; 
+  
+  if (bleEnabled && currentPage != 1 && currentPage != 5 && !inSettingsMode) { currentPage = 1; }
+  display.clearDisplay(); display.setTextColor(SSD1306_WHITE);
+
+  if (inSettingsMode) {
+    display.setFont(); display.setTextSize(1); 
+    
+    String opt[7] = {
+        "SOUND  : " + String(soundEnabled ? "ON" : "OFF"), 
+        "TYPE   : " + String(buzzerIsPassive ? "PASSIVE" : "ACTIVE"),
+        "BLE OUT: " + String(bleEnabled ? "ON" : "OFF"), 
+        "SYNC NTP (WIFI)", 
+        "POPUP  : " + String(modePopupEnable ? "ON" : "OFF"),
+        "SLEEP  : " + String(autoSleepEnable ? "ON" : "OFF"),
+        "EXIT SETTINGS"
+    };
+    
+    int startIdx = 0;
+    if (settingsCursor >= 4) startIdx = settingsCursor - 3;
+    
+    for(int i = 0; i < 4; i++) { 
+        int idx = startIdx + i;
+        if(idx < 7) {
+            display.setCursor(0, i * 8); 
+            if (settingsCursor == idx) display.print(">"); else display.print(" "); 
+            display.print(opt[idx]); 
+        }
+    }
+    display.display(); return;
+  }
+
+  if (isCharging) {
+    display.setFont(); bool showAmps = (millis() / 2000) % 2 == 0; display.setTextSize(1); display.setCursor(0, 0); display.print(oriChargerDetected ? "ORI CHARGER:" : "FAST CHARGER:");
+    display.setTextSize(2); display.setCursor(0, 15); 
+    if (showAmps) { display.print("IN: "); display.print((chargerCurrent > 0.1f) ? chargerCurrent : fabs(amps), 1); display.print("A"); } else { display.print("BAT: "); display.print(soc); display.print("%"); }
+    display.display(); return;
+  }
+
+  if (oledSpeedWarnEnable && speed_kmh >= oledSpeedWarnLimit) {
+    display.setFont(&FreeSansBold18pt7b); display.setCursor(0, 28); display.printf("%d", speed_kmh); display.setFont(); display.setTextSize(1); display.setCursor(88, 15); display.print("KM/H"); display.display(); return;
+  }
+
+  if (showModePopup) {
+    if (millis() - lastModeChange < 3000) { display.setFont(&FreeSansBold9pt7b); showCenteredText(currentMode, 22); display.display(); return; } else { showModePopup = false; currentPage = 1; }
+  }
+
+  display.setFont(); 
+  switch (currentPage) {
+    case 1: { 
+      DateTime dt = rtc.now(); display.setFont(&FreeSansBold18pt7b); display.setCursor(0, 28); display.printf("%02d:%02d", dt.hour(), dt.minute());
+      display.setFont(); display.setTextSize(1); display.setCursor(88, 5);  display.print(DAY_NAMES[dt.dayOfTheWeek()]); display.setCursor(88, 15); display.printf("%d %s", dt.day(), MONTH_NAMES[dt.month() - 1]);
+      display.setCursor(88, 25); if (bleEnabled) display.print("BLE ON"); else display.printf("%04d", dt.year()); break;
+    }
+    case 2: { 
+      display.setTextSize(1); display.setCursor(0, 4); display.print("ECU"); display.setCursor(43, 4); display.print("MOTOR"); display.setCursor(86, 4); display.print("BATT");
+      display.setTextSize(2); display.setCursor(0, 16); display.print(tempCtrl); display.setCursor(43, 16); display.print(tempMotor); display.setCursor(86, 16); display.print(tempBatt); break;
+    }
+    case 3: { 
+      display.setTextSize(1); display.setCursor(8, 4); display.print("VOLT"); display.setCursor(86, 4); display.print("ARUS");
+      display.setTextSize(2); display.setCursor(0, 16); display.print(volts, 1); display.setTextSize(1); display.setCursor(55, 22); display.print("V");
+      display.setTextSize(2); display.setCursor(78, 16); display.print(fabs(amps), 1); display.setTextSize(1); display.setCursor(120, 22); display.print("A"); break;
+    }
+    case 4: { 
+      int pwr = abs((int)power_watt); display.setTextSize(2); display.setCursor(10, 4); display.print((power_watt > 0.1f) ? "+" : "-"); display.setTextSize(3); display.setCursor(32, 2); display.print(pwr); display.setTextSize(1); display.setCursor(102, 22); display.print("watt"); break;
+    }
+    case 5: { 
+      float avg_wh = (trip_km > 0.5) ? (trip_wh / trip_km) : 0.0;
+      int est_range = 0;
+      if (avg_wh > 1.0) {
+          float dynamic_1_percent_wh = (valFullCapacity > 10.0) ? (valFullCapacity * 0.72) : 39.6; 
+          est_range = (int)((dynamic_1_percent_wh * soc) / avg_wh);
+          if (est_range > 130) est_range = 130; 
+      }
+      
+      int16_t x1, y1; uint16_t w, h;
+      display.setTextSize(1); display.setCursor(0, 0); display.print("TRIP(KM)"); 
+      String rightHeader = "AVG(Wh/km)"; display.getTextBounds(rightHeader, 0, 0, &x1, &y1, &w, &h); display.setCursor(128 - w, 0); display.print(rightHeader);
+
+      display.setTextSize(2); display.setCursor(0, 8); display.print(trip_km, 1); 
+      String rightValue = String(avg_wh, 1); display.getTextBounds(rightValue, 0, 0, &x1, &y1, &w, &h); display.setCursor(128 - w, 8); display.print(rightValue);
+
+      display.setTextSize(1); 
+      String bottomText = "";
+      if (trip_km < 1.0) bottomText = "CALCULATING..."; else bottomText = "EST RANGE: " + String(est_range) + " KM";
+      display.getTextBounds(bottomText, 0, 0, &x1, &y1, &w, &h); display.setCursor((128 - w) / 2, 24); display.print(bottomText);
+      break;
+    }
+    case 6: { 
+      int16_t x1, y1; uint16_t w, h;
+      display.setTextSize(1); display.setCursor(0, 0); display.print("HEALTH"); 
+      String rightHeader = "CAPACITY"; display.getTextBounds(rightHeader, 0, 0, &x1, &y1, &w, &h); display.setCursor(128 - w, 0); display.print(rightHeader);
+      display.setTextSize(2); String leftValue = String(valSOH) + "%"; display.setCursor(0, 10); display.print(leftValue); 
+      String rightValue = String(valFullCapacity, 1) + "Ah"; display.getTextBounds(rightValue, 0, 0, &x1, &y1, &w, &h); display.setCursor(128 - w, 10); display.print(rightValue);
+      break;
+    }
+    case 7: { 
+      display.setTextSize(1); 
+      display.setCursor(0, 0);  display.printf("WIFI: %s", ssid.c_str());
+      display.setCursor(0, 8);  display.printf("MEM : %s", memoryInUse.c_str());
+      display.setCursor(0, 16); display.printf("NAME: %s", splashText.c_str()); 
+      display.setCursor(0, 24); display.printf("FW  : %s", FW_VERSION); 
+      break;
+    }
+    case 8: { 
+      display.setTextSize(1); display.setCursor(0, 0); 
+      display.println("== DIAGNOSTIC ==");
+      display.print("RTC : "); display.println(rtcOk ? "OK" : "ERROR (Cek I2C)");
+      display.print("MEM : "); display.println(extEepromAvailable ? "EXT(OK)" : "INT(FB)");
+      display.print("CAN : "); display.println(canOk ? "OK" : "FAIL (Cek SPI)");
+      break;
+    }
+  }
+  display.display();
+}
+
+void loop() {
+  if (canOk) { readCAN(); }
+  checkSerialCommands(); 
+  handleBuzzer(); 
+  handleBLE(); 
+  
+  // Deteksi Keyless & Bluetooth scan background
+  handleKeylessScan();
+
+  unsigned long now = millis();
+  if (lastCalcTime == 0) lastCalcTime = now;
+  unsigned long dt = now - lastCalcTime;
+  
+  if (dt > 0) {
+      if (calc_speed > 0) trip_km += (calc_speed * dt) / 3600000.0; 
+      if (fabs(power_watt) > 0) trip_wh += (fabs(power_watt) * dt) / 3600000.0; 
+      lastCalcTime = now;
+  }
+
+  static unsigned long stopTime = 0;
+  if (speed_kmh == 0 && (trip_km - last_saved_trip_km >= 0.1)) {
+      if (stopTime == 0) stopTime = now;
+      if (now - stopTime > 5000) {  
+          if (extEepromAvailable) { writeEEPROMFloat(ADDR_TRIP_KM, trip_km); writeEEPROMFloat(ADDR_TRIP_WH, trip_wh); } 
+          else { preferences.putFloat("trip_km", trip_km); preferences.putFloat("trip_wh", trip_wh); }
+          last_saved_trip_km = trip_km; 
+          Serial.println("[MEMORY] Data Trip berhasil disimpan saat berhenti.");
+          stopTime = 0;
+      }
+  } else if (speed_kmh > 0) stopTime = 0; 
+
+  btnState = (digitalRead(BUTTON_PIN) == LOW);
+  if (btnState && !lastBtnState) {
+    btnPressTime = now; isBtnPressed = true; handled3s = false; handled5s = false; playBeep(50, 3000);
+  } else if (!btnState && lastBtnState) {
+    isBtnPressed = false; unsigned long duration = now - btnPressTime;
+    if (duration < 3000 && duration > 50) {
+      if (inSettingsMode) { 
+          settingsCursor++; if (settingsCursor > 6) settingsCursor = 0; 
+      } else { 
+          if (dashboardRestricted) {
+              if (currentPage == 1) currentPage = 8; else currentPage = 1;
+          } 
+          else if (!bleEnabled) { 
+              currentPage++; if (currentPage > 7) currentPage = 1; 
+          } 
+          else { 
+              if (currentPage == 1) currentPage = 5; else currentPage = 1; 
+          }
+          lastButtonPress = now; 
+      }
+    }
+  } else if (isBtnPressed) {
+    unsigned long duration = now - btnPressTime;
+    if (inSettingsMode) {
+      if (duration >= 3000 && !handled3s) { handled3s = true; executeSettingAction(); }
+    } else {
+      if (currentPage == 5 && duration >= 3000 && duration < 5000 && !handled3s) { 
+          handled3s = true; handled5s = true; 
+          trip_km = 0.0; trip_wh = 0.0; last_saved_trip_km = 0.0; 
+          
+          if (extEepromAvailable) { writeEEPROMFloat(ADDR_TRIP_KM, 0.0); writeEEPROMFloat(ADDR_TRIP_WH, 0.0); } 
+          else { preferences.putFloat("trip_km", 0.0); preferences.putFloat("trip_wh", 0.0); }
+
+          playBeep(300, 1500);
+          if(oledOk) { display.clearDisplay(); display.setFont(); display.setTextColor(SSD1306_WHITE); display.setTextSize(1); showCenteredText("TRIP RESET TO 0", 15); display.display(); delay(1500); }
+      }
+      else if (duration >= 5000 && !handled5s) { 
+          handled5s = true; handled3s = true; inSettingsMode = true; settingsCursor = 0; 
+          playBeep(80, 2000); delay(80); playBeep(80, 2000);
+          btnPressTime += 240; 
+      }
+    }
+  }
+  lastBtnState = btnState;
+
+  // AUTO SLEEP KEMBALI KE HALAMAN JAM (15 Detik & Batasan Halaman 5 Dihapus)
+  if (autoSleepEnable && !inSettingsMode && (now - lastButtonPress > 15000) && currentPage != 1 && !showModePopup && !isCharging && speed_kmh <= 70) { 
+      currentPage = 1; 
+  }
+  
+  if (now - lastDisplayUpdate > 100) { updateOLED(); lastDisplayUpdate = now; }
+  delay(5); 
+}

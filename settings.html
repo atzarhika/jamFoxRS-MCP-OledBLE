@@ -64,16 +64,81 @@
         </div>
     </div>
 
+    <!-- FITUR UTAMA: BLE KEYLESS TAG SETTINGS -->
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="label" style="color: var(--purple);">BLE KEYLESS TAG (SSR RELAY)</span>
+            <span id="relay-indicator" style="font-size:11px; font-weight:bold; color:var(--text-dim);">TERKUNCI (LOCK)</span>
+        </div>
+        
+        <div style="margin-top:15px; display:flex; flex-direction:column; gap:12px;">
+            <!-- Aktifkan Fungsi Keyless -->
+            <div style="display:flex; align-items:center; background:#0d1117; padding:12px; border-radius:8px; border:1px solid #30363d;">
+                <label style="font-size:14px; font-weight:bold; color:white; display:flex; align-items:center; gap:10px; width:100%; cursor:pointer;">
+                    <input type="checkbox" id="keylessEn" onchange="sendKeylessToggle()"> 
+                    Aktifkan Fitur Smart Keyless
+                </label>
+            </div>
+
+            <!-- Jarak Sensitivitas Sinyal (RSSI) -->
+            <div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; padding:12px; border-radius:8px; border:1px solid #30363d;">
+                <span style="font-size:14px; font-weight:bold; color:white;">Sensitivitas Jarak (RSSI)</span>
+                <select id="keylessRssiInput" onchange="sendKeylessRssi()" style="padding:8px; background:#161b22; color:white; border:1px solid #30363d; border-radius:6px; font-size:12px; cursor:pointer;">
+                    <option value="-65">Sangat Dekat (~1m / -65 dBm)</option>
+                    <option value="-75">Dekat (~2m / -75 dBm)</option>
+                    <option value="-80" selected>Sedang (~3m / -80 dBm)</option>
+                    <option value="-88">Jauh (~5m / -88 dBm)</option>
+                    <option value="-95">Sangat Jauh (~10m / -95 dBm)</option>
+                </select>
+            </div>
+
+            <!-- Daftar Kunci Terdaftar -->
+            <div style="background:#0d1117; padding:12px; border-radius:8px; border:1px solid #30363d; display:flex; flex-direction:column; gap:10px;">
+                <span style="font-size:11px; color:var(--text-dim); font-weight:bold;">DAFTAR SMART TAG TERDAFTAR</span>
+                
+                <!-- Tag 1 -->
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #21262d; padding-bottom:8px;">
+                    <div>
+                        <small style="color:var(--cyan); font-weight:bold;">Tag Utama #1</small>
+                        <div id="tag1-mac" style="font-family:monospace; font-size:13px; color:white;">Belum Terdaftar</div>
+                    </div>
+                    <button id="tag1-btn" onclick="deleteTag(1)" style="display:none; background:var(--orange); border:none; padding:6px 12px; border-radius:6px; color:white; font-size:11px; font-weight:bold;">Hapus</button>
+                </div>
+
+                <!-- Tag 2 -->
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <small style="color:var(--cyan); font-weight:bold;">Tag Cadangan #2</small>
+                        <div id="tag2-mac" style="font-family:monospace; font-size:13px; color:white;">Belum Terdaftar</div>
+                    </div>
+                    <button id="tag2-btn" onclick="deleteTag(2)" style="display:none; background:var(--orange); border:none; padding:6px 12px; border-radius:6px; color:white; font-size:11px; font-weight:bold;">Hapus</button>
+                </div>
+            </div>
+
+            <!-- Pencarian BLE Sekitar -->
+            <button onclick="startBleScan()" id="scanBleBtn" style="width: 100%; background: var(--purple); border: none; padding: 12px; border-radius: 8px; font-weight: bold; color: white; cursor: pointer;">CARI PERANGKAT SMART-TAG BARU</button>
+            
+            <!-- Hasil Scan -->
+            <div id="scan-list-box" style="display:none; background:#0d1117; padding:12px; border-radius:8px; border:1px solid #30363d; max-height:220px; overflow-y:auto;">
+                <span style="font-size:11px; color:var(--text-dim); font-weight:bold;" id="scan-title">HASIL PENCARIAN (0)</span>
+                <div id="scan-results-container" style="display:flex; flex-direction:column; gap:10px; margin-top:10px;"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- 5. KALIBRASI TRIP -->
     <div class="card">
-        <span class="label">KALIBRASI BAN / VELG (AKURASI TRIP)</span>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="label">KALIBRASI BAN / VELG (AKURASI TRIP)</span>
+            <b id="calib-status" style="font-size:13px; color:var(--green);">1.000x</b>
+        </div>
         <div style="display:flex; gap:10px; margin-top:15px;">
             <div style="flex:1;">
                 <span style="font-size:11px; color:var(--text-dim);">Jarak Asli (Misal Maps):</span>
                 <input type="number" step="0.1" id="realTrip" placeholder="Contoh: 83.8" style="width: 100%; padding:10px; margin-top:5px; background: #0d1117; color: white; border: 1px solid #30363d; border-radius: 8px; box-sizing: border-box;">
             </div>
             <div style="flex:1;">
-                <span style="font-size:11px; color:var(--text-dim);">Jarak Tertera (Modul):</span>
+                <span style="font-size:11px; color:var(--text-dim);">Jarak Dashboard:</span>
                 <input type="number" step="0.1" id="dashTrip" placeholder="Contoh: 89.8" style="width: 100%; padding:10px; margin-top:5px; background: #0d1117; color: white; border: 1px solid #30363d; border-radius: 8px; box-sizing: border-box;">
             </div>
         </div>
