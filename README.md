@@ -90,8 +90,11 @@ Perangkat didesain agar informatif namun tidak memecah konsentrasi.
 ### ⚙️ Menu Settings (On-Device)
 Di dalam mode *Settings*, tekan pendek untuk menggeser kursor (`>`), tekan tahan 3 detik untuk mengeksekusi pilihan:
 1. **SOUND (ON/OFF):** Mengatur suara Buzzer.
-2. **BLE OUT (ON/OFF):** Menyalakan pemancar Bluetooth. *(Catatan: Saat BLE ON, navigasi halaman OLED akan dikunci demi membebaskan 100% memori untuk streaming).*
-3. **SYNC NTP:** Sinkronisasi jam menggunakan *tethering* WiFi (opsional, karena sekarang bisa via Bluetooth).
+2. **TYPE (ACTIVE/PASSIVE):** Pilihan type buzzer yang digunakan.
+3. **BLE OUT (ON/OFF):** Menyalakan pemancar Bluetooth. *(Catatan: Saat BLE ON, navigasi halaman OLED akan dikunci demi membebaskan 100% memori untuk streaming).*
+4. **SYNC NTP:** Sinkronisasi jam menggunakan *tethering* WiFi (opsional, karena sekarang bisa via Bluetooth).
+5. **POPUP (ON/OFF):** Pilihan menampilkan mode berkendara termasuk rem dan sidestand.
+6. **SLEEP (ON/OFF):** Pilihan Kembali ke halaman Jam Otomatis selama 15 Detik.
 
 ---
 
