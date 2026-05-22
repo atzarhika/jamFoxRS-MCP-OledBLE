@@ -21,7 +21,7 @@
 #include <BLEAdvertisedDevice.h>
 
 // ================= KONFIGURASI ALAT =================
-const char* FW_VERSION = "V15.41-beta"; // BLE Keyless Safety Edition
+const char* FW_VERSION = "V15.42-beta"; // BLE Keyless Compiler Fixed
 
 // ================= KONFIGURASI PIN =================
 #define SDA_PIN 8       
@@ -64,57 +64,7 @@ BLECharacteristic* pRxCharacteristic = nullptr;
 const char* DAY_NAMES[] = {"MINGGU", "SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU"};
 const char* MONTH_NAMES[] = {"JAN", "FEB", "MAR", "APR", "MEI", "JUN", "JUL", "AGU", "SEP", "OKT", "NOV", "DES"};
 
-// ================= TABEL LOOKUP SOC =================
-const uint16_t socToBms[101] = {
-  0, 60,70,80,90,95,105,115,125,135,140,150,160,170,180,185,195,205,215,225,
-  230,240,250,260,270,275,285,295,305,315,320,330,340,350,360,365,375,385,395,405,
-  410,420,430,440,450,455,465,475,485,495,500,510,520,530,540,550,555,565,575,585,
-  590,600,610,620,630,635,645,655,665,675,680,690,700,710,720,725,735,745,755,765,
-  770,780,790,800,810,815,825,835,845,855,860,870,880,890,900,905,915,925,935,945,950
-};
-
-float getSoCFromLookup(uint16_t raw) {
-  if (raw >= socToBms[100]) return 100.0f;
-  if (raw <= socToBms[0]) return 0.0f;
-  for (int i = 0; i < 100; i++) {
-    if (raw >= socToBms[i] && raw <= socToBms[i + 1]) {
-      float range = (float)(socToBms[i + 1] - socToBms[i]);
-      float delta = (float)(raw - socToBms[i]);
-      if (range == 0) return (float)i;
-      return (float)i + (delta / range);
-    }
-  }
-  return 0.0f;
-}
-
-// ================= FUNGSI BACA/TULIS EXTERNAL EEPROM =================
-void writeEEPROMFloat(unsigned int addr, float val) {
-  byte* p = (byte*)(void*)&val;
-  Wire.beginTransmission(EEPROM_ADDR);
-  Wire.write((int)(addr >> 8)); Wire.write((int)(addr & 0xFF));
-  for (byte i = 0; i < 4; i++) { Wire.write(*p++); }
-  Wire.endTransmission(); delay(10); 
-}
-
-float readEEPROMFloat(unsigned int addr) {
-  float val = 0.0; byte* p = (byte*)(void*)&val;
-  Wire.beginTransmission(EEPROM_ADDR);
-  Wire.write((int)(addr >> 8)); Wire.write((int)(addr & 0xFF));
-  if(Wire.endTransmission() != 0) return 0.0; 
-  
-  Wire.requestFrom((uint16_t)EEPROM_ADDR, (uint8_t)4);
-  int timeout = 0;
-  while(Wire.available() < 4 && timeout < 100) { delay(1); timeout++; } 
-  
-  if (Wire.available() >= 4) {
-      for (byte i = 0; i < 4; i++) { *p++ = Wire.read(); }
-  }
-  uint32_t *check = (uint32_t*)&val;
-  if(*check == 0xFFFFFFFF || isnan(val)) return 0.0;
-  return val;
-}
-
-// ================= VARIABEL DATA =================
+// ================= VARIABEL DATA TELEMETRI =================
 int rpm = 0; 
 int speed_kmh = 0;       
 float calc_speed = 0.0f; 
@@ -182,7 +132,7 @@ bool triggerWebScan = false;
 bool webScanActive = false; 
 unsigned long lastScanTime = 0;
 bool isScanningActive = false;
-int keylessRssiThreshold = -80; // Default limit sensitivitas sinyal (sedang)
+int keylessRssiThreshold = -80; 
 
 bool btnState = false, lastBtnState = false;
 unsigned long btnPressTime = 0;
@@ -195,55 +145,60 @@ uint16_t bleTxLen = 0, bleTxOffset = 0;
 bool bleTxInProgress = false;
 uint32_t lastDataSend = 0;
 
-// ================= FUNGSI BUZZER UNIVERSAL =================
-void setBuzzer(bool state, int freq = 2000) {
-  if (!soundEnabled) { 
-      if (isBuzzerOn) { digitalWrite(BUZZER_PIN, LOW); noTone(BUZZER_PIN); isBuzzerOn = false; }
-      return; 
-  }
-  
-  if (state && !isBuzzerOn) { 
-      if (buzzerIsPassive) tone(BUZZER_PIN, freq);
-      else digitalWrite(BUZZER_PIN, HIGH);
-      isBuzzerOn = true;
-  } 
-  else if (!state && isBuzzerOn) {
-      if (buzzerIsPassive) noTone(BUZZER_PIN);
-      else digitalWrite(BUZZER_PIN, LOW);
-      isBuzzerOn = false;
-  }
-}
+// ================= PROTOTIPE FUNGSI (FORWARD DECLARATIONS) =================
+void showCenteredText(String text, int yPos);
+void setBuzzer(bool state, int freq = 2000);
+void playBeep(int duration, int freq = 2000);
+float getSoCFromLookup(uint16_t raw);
+void writeEEPROMFloat(unsigned int addr, float val);
+float readEEPROMFloat(unsigned int addr);
+void initBLE();
+void performNtpSync(bool silent);
+void checkSerialCommands();
+void handleBuzzer();
+void readCAN();
+void handleKeylessScan();
+void buildJsonInto();
+void handleBLE();
+void executeSettingAction();
+void updateOLED();
+void scanCompleteCB(BLEScanResults results);
 
-void playBeep(int duration, int freq = 2000) {
-  if (!soundEnabled) return;
-  if (buzzerIsPassive) { 
-      tone(BUZZER_PIN, freq); delay(duration); noTone(BUZZER_PIN); 
-  } else { 
-      digitalWrite(BUZZER_PIN, HIGH); delay(duration); digitalWrite(BUZZER_PIN, LOW); 
-  }
-}
+// ================= TABEL LOOKUP SOC =================
+const uint16_t socToBms[101] = {
+  0, 60,70,80,90,95,105,115,125,135,140,150,160,170,180,185,195,205,215,225,
+  230,240,250,260,270,275,285,295,305,315,320,330,340,350,360,365,375,385,395,405,
+  410,420,430,440,450,455,465,475,485,495,500,510,520,530,540,550,555,565,575,585,
+  590,600,610,620,630,635,645,655,665,675,680,690,700,710,720,725,735,745,755,765,
+  770,780,790,800,810,815,825,835,845,855,860,870,880,890,900,905,915,925,935,945,950
+};
 
-// ================= ADV SCAN CALLBACK UNTUK DETEKSI KEYLESS =================
+// ================= DEFINISI KELAS BLE SERVER CALLBACKS =================
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) { deviceConnected = true; }
+    void onDisconnect(BLEServer* pServer) { deviceConnected = false; }
+};
+
+// ================= DEFINISI KELAS ADV SCAN CALLBACKS (KEYLESS) =================
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
         String address = advertisedDevice.getAddress().toString().c_str();
         address.toUpperCase();
         int rssi = advertisedDevice.getRSSI();
         
-        // Deteksi secara Real-time saat Scanning dengan Filter Jarak (RSSI)
+        // Filter Keyless berdasarkan RSSI (Threshold Sensitivitas Jarak)
         if (keylessEnabled && rssi >= keylessRssiThreshold) {
             if ((registeredTag1.length() > 0 && address == registeredTag1) ||
                 (registeredTag2.length() > 0 && address == registeredTag2)) {
-                lastTagSeenTime = millis(); // Perbarui waktu terakhir melihat tag
+                lastTagSeenTime = millis(); 
             }
         }
 
-        // Jika Web UI sedang meminta daftar perangkat sekitar, kirim data secara instant
+        // Kirim hasil scanning sekitar ke Web UI secara real-time
         if (webScanActive && pCharacteristic) {
             String name = advertisedDevice.getName().c_str();
             if (name.length() == 0) name = "Tag BLE";
             
-            // Format transmisi instant per perangkat agar menghemat buffer MTU
             char dBuf[150];
             snprintf(dBuf, sizeof(dBuf), "{\"disc\":{\"name\":\"%s\",\"mac\":\"%s\",\"rssi\":%d}}\n", name.c_str(), address.c_str(), rssi);
             pCharacteristic->setValue((uint8_t*)dBuf, strlen(dBuf));
@@ -252,18 +207,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     }
 };
 
-// Callback saat scan periodik non-blocking selesai
-void scanCompleteCB(BLEScanResults results) {
-    isScanningActive = false;
-    if (webScanActive && pCharacteristic) {
-        webScanActive = false;
-        pCharacteristic->setValue((uint8_t*)"{\"scan_status\":\"END\"}\n", 21);
-        pCharacteristic->notify();
-    }
-    BLEDevice::getScan()->clearResults(); // Bebaskan RAM yang terpakai hasil scan
-}
-
-// ================= BLE RX CALLBACKS =================
+// ================= DEFINISI KELAS BLE CHARACTERISTIC RX CALLBACKS =================
 class MyRxCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pChar) {
         String rxStr = pChar->getValue(); 
@@ -316,7 +260,7 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                         keylessEnabled = (val == 1);
                         preferences.putBool("keylessEn", keylessEnabled);
                         if (!keylessEnabled) {
-                            digitalWrite(RELAY_PIN, HIGH); // Jika dimatikan dari Web, kembalikan ke Bypass (HIGH/ON)
+                            digitalWrite(RELAY_PIN, HIGH); 
                             relayState = true;
                         }
                     }
@@ -331,7 +275,6 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                     playBeep(200, 3000);
                 }
             }
-            // ================= CONFIG SMART KEYLESS TAG =================
             else if (rxStr.startsWith("SCANBLE")) {
                 triggerWebScan = true;
                 playBeep(100, 2000);
@@ -376,26 +319,113 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
     }
 };
 
-// ================= DEKLARASI FUNGSI =================
+// ================= IMPLEMENTASI FUNGSI-FUNGSI UTAMA =================
+
+float getSoCFromLookup(uint16_t raw) {
+  if (raw >= socToBms[100]) return 100.0f;
+  if (raw <= socToBms[0]) return 0.0f;
+  for (int i = 0; i < 100; i++) {
+    if (raw >= socToBms[i] && raw <= socToBms[i + 1]) {
+      float range = (float)(socToBms[i + 1] - socToBms[i]);
+      float delta = (float)(raw - socToBms[i]);
+      if (range == 0) return (float)i;
+      return (float)i + (delta / range);
+    }
+  }
+  return 0.0f;
+}
+
+void writeEEPROMFloat(unsigned int addr, float val) {
+  byte* p = (byte*)(void*)&val;
+  Wire.beginTransmission(EEPROM_ADDR);
+  Wire.write((int)(addr >> 8)); Wire.write((int)(addr & 0xFF));
+  for (byte i = 0; i < 4; i++) { Wire.write(*p++); }
+  Wire.endTransmission(); delay(10); 
+}
+
+float readEEPROMFloat(unsigned int addr) {
+  float val = 0.0; byte* p = (byte*)(void*)&val;
+  Wire.beginTransmission(EEPROM_ADDR);
+  Wire.write((int)(addr >> 8)); Wire.write((int)(addr & 0xFF));
+  if(Wire.endTransmission() != 0) return 0.0; 
+  
+  Wire.requestFrom((uint16_t)EEPROM_ADDR, (uint8_t)4);
+  int timeout = 0;
+  while(Wire.available() < 4 && timeout < 100) { delay(1); timeout++; } 
+  
+  if (Wire.available() >= 4) {
+      for (byte i = 0; i < 4; i++) { *p++ = Wire.read(); }
+  }
+  uint32_t *check = (uint32_t*)&val;
+  if(*check == 0xFFFFFFFF || isnan(val)) return 0.0;
+  return val;
+}
+
+void showCenteredText(String text, int yPos) {
+  if (!oledOk) return; 
+  int16_t x1, y1; uint16_t w, h;
+  display.getTextBounds(text, 0, yPos, &x1, &y1, &w, &h); 
+  int xPos = (128 - w) / 2; 
+  if (xPos < 0) xPos = 0; 
+  display.setCursor(xPos, yPos);
+  display.print(text);
+}
+
+void setBuzzer(bool state, int freq) {
+  if (!soundEnabled) { 
+      if (isBuzzerOn) { digitalWrite(BUZZER_PIN, LOW); noTone(BUZZER_PIN); isBuzzerOn = false; }
+      return; 
+  }
+  if (state && !isBuzzerOn) { 
+      if (buzzerIsPassive) tone(BUZZER_PIN, freq);
+      else digitalWrite(BUZZER_PIN, HIGH);
+      isBuzzerOn = true;
+  } 
+  else if (!state && isBuzzerOn) {
+      if (buzzerIsPassive) noTone(BUZZER_PIN);
+      else digitalWrite(BUZZER_PIN, LOW);
+      isBuzzerOn = false;
+  }
+}
+
+void playBeep(int duration, int freq) {
+  if (!soundEnabled) return;
+  if (buzzerIsPassive) { 
+      tone(BUZZER_PIN, freq); delay(duration); noTone(BUZZER_PIN); 
+  } else { 
+      digitalWrite(BUZZER_PIN, HIGH); delay(duration); digitalWrite(BUZZER_PIN, LOW); 
+  }
+}
+
+void scanCompleteCB(BLEScanResults results) {
+    isScanningActive = false;
+    if (webScanActive && pCharacteristic) {
+        webScanActive = false;
+        pCharacteristic->setValue((uint8_t*)"{\"scan_status\":\"END\"}\n", 21);
+        pCharacteristic->notify();
+    }
+    BLEDevice::getScan()->clearResults(); 
+}
+
+// ================= INITIALIZATION & SETUP =================
 void setup() {
   Serial.begin(115200);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, HIGH); // Failsafe awal: Bypass ON (Aktif) sebelum inisialisasi selesai
+  digitalWrite(RELAY_PIN, HIGH); 
   
   delay(150); 
   
-  // --- HARDWARE CEK: SAFE MODE (WIPING KEYLESS EMERGENCY) ---
+  // --- DETEKSI FISIK SAFE MODE (RESET DARURAT KEYLESS) ---
   if (digitalRead(BUTTON_PIN) == LOW) {
       Preferences prefs;
       prefs.begin("cfg", false);
-      prefs.putBool("ble", false);       // Nonaktifkan Bluetooth
-      prefs.putBool("keylessEn", false); // Matikan Fitur Keyless
-      prefs.putString("tag1", "");       // Hapus Tag Terdaftar 1
-      prefs.putString("tag2", "");       // Hapus Tag Terdaftar 2
+      prefs.putBool("ble", false);       
+      prefs.putBool("keylessEn", false); 
+      prefs.putString("tag1", "");       
+      prefs.putString("tag2", "");       
       prefs.end();
 
-      // Failsafe Darurat: Buka relay agar motor dapat dinyalakan dengan kunci mekanis normal
       digitalWrite(RELAY_PIN, HIGH);
       relayState = true;
 
@@ -409,8 +439,6 @@ void setup() {
           display.display();
       }
       Serial.println("[SYSTEM] Safe Mode Aktif: Semua Kunci Dihapus, Relay Menyala (Bypass ON).");
-      
-      // Bunyi Buzzer Peringatan Khusus Safe Mode
       for(int i=0; i<3; i++) { digitalWrite(BUZZER_PIN, HIGH); delay(200); digitalWrite(BUZZER_PIN, LOW); delay(100); }
       delay(2000); 
   }
@@ -440,7 +468,6 @@ void setup() {
   autoSleepEnable = preferences.getBool("slpMode", true);
   tripCalibration = preferences.getFloat("tripCal", 1.0f);
 
-  // Load Keyless Preferences
   keylessEnabled = preferences.getBool("keylessEn", false);
   registeredTag1 = preferences.getString("tag1", "");
   registeredTag2 = preferences.getString("tag2", "");
@@ -511,7 +538,6 @@ void initBLE() {
 
   pService->start();
   
-  // Set inisialisasi BLE Scanner bawaan
   BLEScan* pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setActiveScan(true);
@@ -606,10 +632,7 @@ void readCAN() {
   uint32_t nowSec = millis() / 1000; if (nowSec != lastSecond) { canMessagesPerSec = canMsgCount; canMsgCount = 0; lastSecond = nowSec; }
 }
 
-// ================= KONTROL SCANNING & DETEKSI KEYLESS =================
 void handleKeylessScan() {
-    // FAILSAFE LOGIC: Jika Bluetooth mati, atau Fitur Keyless di-OFF-kan dari HP
-    // Relay SSR dipaksa ON (HIGH) agar motor bisa diaktifkan/distarter pakai kunci mekanik standar.
     if (!bleEnabled || !keylessEnabled) {
         digitalWrite(RELAY_PIN, HIGH);
         relayState = true;
@@ -618,35 +641,28 @@ void handleKeylessScan() {
 
     unsigned long now = millis();
 
-    // 1. Logika Keamanan & Keselamatan Relay (Safety Interlock):
-    // Kunci relay hanya jika motor diam sempurna (Speed == 0 & RPM == 0) untuk menghindari power mati di jalan raya!
+    // Safety Interlock: Hanya kunci relay jika motor diam total
     if (now - lastTagSeenTime < 20000 || speed_kmh > 0 || rpm > 0) {
         digitalWrite(RELAY_PIN, HIGH);
         relayState = true;
     } else {
-        digitalWrite(RELAY_PIN, LOW); // Tag menjauh -> Kunci SSR Relay! (Immobilizer Aktif)
+        digitalWrite(RELAY_PIN, LOW); 
         relayState = false;
     }
 
-    // 2. Scan Trigger untuk Web UI (Asynchronous, Non-Blocking)
     if (triggerWebScan) {
         triggerWebScan = false;
         isScanningActive = true;
         webScanActive = true;
-        
-        // Kirim penanda scan dimulai
         if (pCharacteristic) {
             pCharacteristic->setValue((uint8_t*)"{\"scan_status\":\"START\"}\n", 23);
             pCharacteristic->notify();
         }
-
-        // Jalankan scan 4 detik secara non-blocking agar OLED & CAN tetap responsif!
         BLEDevice::getScan()->start(4, &scanCompleteCB, false); 
         lastScanTime = millis();
         return;
     }
 
-    // 3. Scan Periodik Non-Blocking di Background (Scan 2 detik setiap 8 detik)
     if (now - lastScanTime > 8000 && !isScanningActive) {
         isScanningActive = true;
         BLEDevice::getScan()->start(2, &scanCompleteCB, false); 
@@ -673,7 +689,7 @@ void buildJsonInto() {
       if (est_range > 130) est_range = 130; 
   }
 
-  // Mengirim status pengaturan (set), kalibrasi & KEYLESS data ke Web UI
+  // Mengirim data ke Web UI
   bleTxLen = snprintf(bleTxBuf, sizeof(bleTxBuf),
     "{\"rpm\":%d,\"speed\":%d,\"mode\":\"%s\",\"volts\":%.1f,\"amps\":%.1f,\"power\":%.0f,\"soc\":%d,"
     "\"trip\":{\"km\":%.1f,\"avg\":%.1f,\"range\":%d},\"cal\":%.3f,"
@@ -734,9 +750,9 @@ void executeSettingAction() {
   } else if (settingsCursor == 3) { 
       if (bleEnabled) { if(oledOk) { display.clearDisplay(); display.setFont(); display.setTextSize(1); showCenteredText("TURN OFF BLE FIRST!", 15); display.display(); delay(2500); } } 
       else { performNtpSync(false); inSettingsMode = false; }
-  } else if (settingsCursor == 4) { // POPUP TOGGLE
+  } else if (settingsCursor == 4) { 
       modePopupEnable = !modePopupEnable; preferences.putBool("popMode", modePopupEnable); playBeep(100, 3000);
-  } else if (settingsCursor == 5) { // SLEEP TOGGLE
+  } else if (settingsCursor == 5) { 
       autoSleepEnable = !autoSleepEnable; preferences.putBool("slpMode", autoSleepEnable); playBeep(100, 3000);
   } else if (settingsCursor == 6) { 
       inSettingsMode = false; lastButtonPress = millis(); playBeep(100, 2000);
@@ -745,13 +761,11 @@ void executeSettingAction() {
 
 void updateOLED() {
   if (!oledOk) return; 
-  
   if (bleEnabled && currentPage != 1 && currentPage != 5 && !inSettingsMode) { currentPage = 1; }
   display.clearDisplay(); display.setTextColor(SSD1306_WHITE);
 
   if (inSettingsMode) {
     display.setFont(); display.setTextSize(1); 
-    
     String opt[7] = {
         "SOUND  : " + String(soundEnabled ? "ON" : "OFF"), 
         "TYPE   : " + String(buzzerIsPassive ? "PASSIVE" : "ACTIVE"),
@@ -761,10 +775,8 @@ void updateOLED() {
         "SLEEP  : " + String(autoSleepEnable ? "ON" : "OFF"),
         "EXIT SETTINGS"
     };
-    
     int startIdx = 0;
     if (settingsCursor >= 4) startIdx = settingsCursor - 3;
-    
     for(int i = 0; i < 4; i++) { 
         int idx = startIdx + i;
         if(idx < 7) {
@@ -818,14 +830,11 @@ void updateOLED() {
           est_range = (int)((dynamic_1_percent_wh * soc) / avg_wh);
           if (est_range > 130) est_range = 130; 
       }
-      
       int16_t x1, y1; uint16_t w, h;
       display.setTextSize(1); display.setCursor(0, 0); display.print("TRIP(KM)"); 
       String rightHeader = "AVG(Wh/km)"; display.getTextBounds(rightHeader, 0, 0, &x1, &y1, &w, &h); display.setCursor(128 - w, 0); display.print(rightHeader);
-
       display.setTextSize(2); display.setCursor(0, 8); display.print(trip_km, 1); 
       String rightValue = String(avg_wh, 1); display.getTextBounds(rightValue, 0, 0, &x1, &y1, &w, &h); display.setCursor(128 - w, 8); display.print(rightValue);
-
       display.setTextSize(1); 
       String bottomText = "";
       if (trip_km < 1.0) bottomText = "CALCULATING..."; else bottomText = "EST RANGE: " + String(est_range) + " KM";
@@ -862,11 +871,7 @@ void updateOLED() {
 
 void loop() {
   if (canOk) { readCAN(); }
-  checkSerialCommands(); 
-  handleBuzzer(); 
-  handleBLE(); 
-  
-  // Deteksi Keyless & Bluetooth scan background
+  checkSerialCommands(); handleBuzzer(); handleBLE(); 
   handleKeylessScan();
 
   unsigned long now = millis();
@@ -936,7 +941,6 @@ void loop() {
   }
   lastBtnState = btnState;
 
-  // AUTO SLEEP KEMBALI KE HALAMAN JAM (15 Detik & Batasan Halaman 5 Dihapus)
   if (autoSleepEnable && !inSettingsMode && (now - lastButtonPress > 15000) && currentPage != 1 && !showModePopup && !isCharging && speed_kmh <= 70) { 
       currentPage = 1; 
   }
