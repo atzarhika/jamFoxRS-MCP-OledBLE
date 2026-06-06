@@ -20,7 +20,7 @@ Pada versi ini, alat telah dilengkapi dengan **Bluetooth Low Energy (BLE) Live S
 * **Early Warning System (Buzzer):** Alarm kecepatan tinggi dan indikator gigi mundur.
 * Perlindungan logika *Anti-Regen* agar pengereman regeneratif tidak disalahartikan sebagai pengecasan.
 * **Sistem Menu On-Device:** Pengaturan alat (Sound, BLE, NTP, dll.) langsung dari tombol fisik layar.
-* Fitur Keyless di GPIO20
+* Fitur Keyless di **GPIO20**.
 
 ---
 
