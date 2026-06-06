@@ -115,14 +115,43 @@
                 </div>
             </div>
 
-            <!-- Pencarian BLE Sekitar -->
-            <button onclick="startBleScan()" id="scanBleBtn" style="width: 100%; background: var(--purple); border: none; padding: 12px; border-radius: 8px; font-weight: bold; color: white; cursor: pointer;">CARI PERANGKAT SMART-TAG BARU</button>
+            <!-- CARA 1: PENCARIAN BLE VIA SMARTPHONE (HP) -->
+            <div style="border-top:1px dashed #30363d; padding-top:15px; margin-top:10px;">
+                <span class="label" style="color:var(--orange); display:block; margin-bottom:8px;">METODE A: SCAN DENGAN SMARTPHONE</span>
+                <button onclick="scanForNearbyDevices()" id="scanBleBtn" style="width: 100%; background: var(--purple); border: none; padding: 12px; border-radius: 8px; font-weight: bold; color: white; cursor: pointer;">PINDAI PERANGKAT DARI HP</button>
+            </div>
             
-            <!-- Hasil Scan -->
+            <!-- Hasil Scan HP -->
             <div id="scan-list-box" style="display:none; background:#0d1117; padding:12px; border-radius:8px; border:1px solid #30363d; max-height:220px; overflow-y:auto;">
                 <span style="font-size:11px; color:var(--text-dim); font-weight:bold;" id="scan-title">HASIL PENCARIAN (0)</span>
                 <div id="scan-results-container" style="display:flex; flex-direction:column; gap:10px; margin-top:10px;"></div>
             </div>
+
+            <!-- CARA 2: INPUT MAC MANUAL (FAILSAFE GANDA) -->
+            <div style="border-top:1px dashed #30363d; padding-top:15px; margin-top:10px;">
+                <span class="label" style="color:var(--cyan); display:block; margin-bottom:8px;">METODE B: INPUT MAC MANUAL (REKOMENDASI STABIL)</span>
+                
+                <div style="display:flex; flex-direction:column; gap:10px; background:#0d1117; padding:12px; border-radius:8px; border:1px solid #30363d;">
+                    <!-- Input Tag 1 -->
+                    <div>
+                        <span style="font-size:11px; color:var(--text-dim);">MAC Tag Utama #1:</span>
+                        <div style="display:flex; gap:8px; margin-top:5px;">
+                            <input type="text" id="manual-mac-input-1" placeholder="Format: AABBCCDDEEFF" maxlength="17" style="flex:1; padding:10px; background:#161b22; color:white; border:1px solid #30363d; border-radius:6px; font-family:monospace;">
+                            <button onclick="registerManualTag(1)" style="background:var(--cyan); border:none; padding:10px 15px; border-radius:6px; color:white; font-weight:bold; cursor:pointer;">Simpan #1</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Input Tag 2 -->
+                    <div>
+                        <span style="font-size:11px; color:var(--text-dim);">MAC Tag Cadangan #2:</span>
+                        <div style="display:flex; gap:8px; margin-top:5px;">
+                            <input type="text" id="manual-mac-input-2" placeholder="Format: AABBCCDDEEFF" maxlength="17" style="flex:1; padding:10px; background:#161b22; color:white; border:1px solid #30363d; border-radius:6px; font-family:monospace;">
+                            <button onclick="registerManualTag(2)" style="background:var(--purple); border:none; padding:10px 15px; border-radius:6px; color:white; font-weight:bold; cursor:pointer;">Simpan #2</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 

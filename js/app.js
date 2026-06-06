@@ -1,6 +1,6 @@
 /**
- * Votol Dash Pro v1.1 - ULTIMATE TEST VERSION
- * Fitur: Dashboard, Mode, GPX (Votol Speed), Wake Lock, Glow-Ball, BMS Detail, Settings, & Keyless Tag
+ * Votol Dash Pro v1.1 - ULTIMATE TEST VERSION (Modular)
+ * Fitur: Dashboard, Mode, GPX (Votol Speed), Wake Lock, Glow-Ball, BMS Detail, Settings, & Smartphone BLE Tag Scanner
  */
 
 const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
@@ -23,7 +23,7 @@ let gpxDataPoints = [];
 let currentGPS = { lat: 0, lon: 0, alt: 0 };
 let wakeLock = null;
 
-let discoveredDevices = []; // Buffer penampung scan BLE Keyless
+let discoveredDevices = []; // Menyimpan perangkat hasil scan HP
 
 // --- GPS & WAKE LOCK ---
 if ("geolocation" in navigator) {
@@ -59,31 +59,34 @@ function collectTelemetry(votolData) {
     });
 }
 
-// --- NAVIGATION ---
+// --- NAVIGATION & DYNAMIC PAGE LOADING ---
 async function loadPage(pageName, element) {
     try {
         const response = await fetch(`${pageName}.html`);
         const html = await response.text();
         document.getElementById('page-container').innerHTML = html;
         lucide.createIcons();
+        
         if (pageName === 'battery') generateCells();
         if (pageName === 'trip') initCharts();
+        
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
         if (element) element.classList.add('active');
     } catch (error) { console.error(error); }
 }
 
-// --- UPDATE UI ---
+// --- UPDATE UI DASHBOARD ---
 function updateUI(data) {
     if (!isConnected || !data) return;
     
     collectTelemetry(data);
 
-    // Logs & History
+    // Logs Stream
     const logBox = document.getElementById('log-box');
     if (logBox) {
         logBox.innerText = `[${new Date().toLocaleTimeString()}] ${JSON.stringify(data)}\n` + logBox.innerText.substring(0, 500);
     }
+    
     speedHistory.push(data.speed || 0);
     currentHistory.push(Math.abs(data.amps || 0));
     speedHistory.shift(); currentHistory.shift();
@@ -105,7 +108,7 @@ function updateUI(data) {
         else modeEl.style.backgroundColor = "#f85149";
     }
 
-    // 2. GAUGE & BOLA BIRU (GLOW-BALL)
+    // 2. GAUGE
     const rpm = data.rpm || 0;
     const circle = document.getElementById('gauge-circle');
     const ball = document.getElementById('glow-ball');
@@ -120,7 +123,7 @@ function updateUI(data) {
         }
     }
 
-    // 3. MAPPING PARAMETER
+    // 3. PARAMETER MAPPING
     const h = data.health || {};
     const t = data.trip || {};
     const vals = {
@@ -165,7 +168,7 @@ function updateUI(data) {
         });
     }
 
-    // 5. SINKRONISASI PENGATURAN UI DENGAN ESP32 LIVE
+    // 5. LIVE SETTINGS SYNC
     if (data.set) {
         let popCb = document.getElementById('modePopupEn');
         let slpCb = document.getElementById('autoSleepEn');
@@ -175,18 +178,12 @@ function updateUI(data) {
         if (popCb && popCb.checked !== (data.set.pop === 1)) popCb.checked = (data.set.pop === 1);
         if (slpCb && slpCb.checked !== (data.set.slp === 1)) slpCb.checked = (data.set.slp === 1);
 
-        if (olECb) {
-            if (!olECb.onchange) olECb.onchange = sendAlarmOled; 
-            if (document.activeElement !== olECb && olECb.checked !== (data.set.olE === 1)) {
-                olECb.checked = (data.set.olE === 1);
-            }
+        if (olECb && document.activeElement !== olECb && olECb.checked !== (data.set.olE === 1)) {
+            olECb.checked = (data.set.olE === 1);
         }
 
-        if (bzECb) {
-            if (!bzECb.onchange) bzECb.onchange = sendAlarmBuzzer;
-            if (document.activeElement !== bzECb && bzECb.checked !== (data.set.bzE === 1)) {
-                bzECb.checked = (data.set.bzE === 1);
-            }
+        if (bzECb && document.activeElement !== bzECb && bzECb.checked !== (data.set.bzE === 1)) {
+            bzECb.checked = (data.set.bzE === 1);
         }
 
         let olLInp = document.getElementById('oledAlarmLimit');
@@ -200,7 +197,7 @@ function updateUI(data) {
         }
     }
 
-    // SINKRONISASI REAL-TIME KEYLESS STATE (FITUR BARU)
+    // SINKRONISASI REAL-TIME KEYLESS STATE
     if (data.keyless) {
         let keylessCb = document.getElementById('keylessEn');
         let tag1MacEl = document.getElementById('tag1-mac');
@@ -255,48 +252,28 @@ function updateUI(data) {
         }
     }
 
+    // UPDATE INDIKATOR SENSOR TRANSISI REAL-TIME (Cruise, Standar)
+    const cruiseInd = document.getElementById('cruise-indicator');
+    if (cruiseInd) cruiseInd.style.display = data.cruise === 1 ? 'flex' : 'none';
+    const standInd = document.getElementById('stand-indicator');
+    if (standInd) standInd.style.display = data.stand === 1 ? 'flex' : 'none';
+
     if (data.cal !== undefined) {
         let calEl = document.getElementById('calib-status');
         if (calEl) calEl.innerText = data.cal.toFixed(3) + "x";
     }
 }
 
-// --- GPX SAVE ---
+// --- GPX LOGGER ---
 function saveGPX() {
     if (gpxDataPoints.length === 0) return;
-    
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    const fileName = `Votol-${year}${month}${day}_${hours}${minutes}${seconds}.gpx`;
+    const fileName = `Votol-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.gpx`;
 
-    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Votol Dash Pro" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v2">
-<trk><name>Votol Telemetry Session</name><trkseg>`;
-
+    let gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Votol Dash Pro">\n<trk><name>Votol Session</name><trkseg>`;
     gpxDataPoints.forEach(p => {
-        const speedMS = (p.speed / 3.6).toFixed(3);
-        gpx += `
-<trkpt lat="${p.lat}" lon="${p.lon}">
-    <ele>${p.ele.toFixed(2)}</ele>
-    <time>${p.time}</time>
-    <extensions>
-        <gpxtpx:TrackPointExtension>
-            <gpxtpx:speed>${speedMS}</gpxtpx:speed>
-            <gpxtpx:hr>${p.rpm}</gpxtpx:hr>
-            <gpxtpx:cad>${p.soc}</gpxtpx:cad>
-        </gpxtpx:TrackPointExtension>
-        <real_rpm>${p.rpm}</real_rpm>
-        <real_soc>${p.soc}</real_soc>
-        <real_current>${p.current || 0}</real_current>
-    </extensions>
-</trkpt>`;
+        gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}"><ele>${p.ele}</ele><time>${p.time}</time></trkpt>`;
     });
-
     gpx += `\n</trkseg></trk></gpx>`;
     
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
@@ -328,16 +305,12 @@ async function toggleRecord() {
     }
 }
 
-// --- BLUETOOTH & SETTINGS ---
-let notificationHandler = null;
-
+// --- KONEKSI BLUETOOTH KE ESP32 ---
 async function toggleConnect() {
     if (isConnected) {
-        try {
-            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-                bluetoothDevice.gatt.disconnect();
-            }
-        } catch (e) { console.error(e); }
+        if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+            bluetoothDevice.gatt.disconnect();
+        }
         return;
     }
 
@@ -350,79 +323,137 @@ async function toggleConnect() {
         bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
         const server = await bluetoothDevice.gatt.connect();
         const service = await server.getPrimaryService(SERVICE_UUID);
+        
         txChar = await service.getCharacteristic(TX_CHAR_UUID);
         rxChar = await service.getCharacteristic(RX_CHAR_UUID);
+        
         await txChar.startNotifications();
+        txChar.addEventListener('characteristicvaluechanged', (e) => {
+            let chunk = new TextDecoder().decode(e.target.value);
+            rxBuffer += chunk;
+            if (rxBuffer.length > 5000) rxBuffer = ""; 
 
-        if (notificationHandler) {
-            txChar.removeEventListener('characteristicvaluechanged', notificationHandler);
-        }
+            if (rxBuffer.includes('\n')) {
+                let lines = rxBuffer.split('\n');
+                rxBuffer = lines.pop();
+                lines.forEach(line => {
+                    if (!line.trim()) return;
+                    try {
+                        const json = JSON.parse(line);
+                        updateUI(json);
+                    } catch (err) { }
+                });
+            }
+        });
 
-        notificationHandler = (e) => {
-            try {
-                let chunk = new TextDecoder().decode(e.target.value);
-                rxBuffer += chunk;
-                if (rxBuffer.length > 5000) rxBuffer = ""; 
-
-                if (rxBuffer.includes('\n')) {
-                    let lines = rxBuffer.split('\n');
-                    rxBuffer = lines.pop();
-                    lines.forEach(line => {
-                        if (!line.trim()) return;
-                        try {
-                            const json = JSON.parse(line);
-                            
-                            if (json.scan_status) {
-                                handleWebScanStatus(json.scan_status);
-                            } 
-                            else if (json.disc) {
-                                handleWebScanDevice(json.disc);
-                            } 
-                            else {
-                                updateUI(json);
-                            }
-                        } catch (err) { }
-                    });
-                }
-            } catch (err) { console.error("Notification Error:", err); }
-        };
-
-        txChar.addEventListener('characteristicvaluechanged', notificationHandler);
-        setStatus(true);
-        console.log("Bluetooth Connected");
+        isConnected = true;
+        document.getElementById('connectBtn').innerText = "DISCONNECT";
+        document.getElementById('conn-status').innerText = "● ONLINE";
+        document.getElementById('conn-status').style.color = "#3fb950";
 
     } catch (e) {
         console.error(e);
-        alert("Koneksi Gagal: " + e);
         onDisconnected();
     }
 }
 
-function setStatus(status) {
-    isConnected = status;
-    const btn = document.getElementById('connectBtn');
-    if (btn) btn.innerText = status ? "DISCONNECT" : "CONNECT";
-    
-    const st = document.getElementById('conn-status');
-    if (st) {
-        st.innerText = status ? "● ONLINE" : "● OFFLINE";
-        st.style.color = status ? "#3fb950" : "#f85149";
-    }
-}
-
 function onDisconnected() {
-    console.log("Bluetooth Disconnected");
-    if (txChar && notificationHandler) {
-        txChar.removeEventListener('characteristicvaluechanged', notificationHandler);
-    }
+    isConnected = false;
+    document.getElementById('connectBtn').innerText = "CONNECT";
+    document.getElementById('conn-status').innerText = "● OFFLINE";
+    document.getElementById('conn-status').style.color = "#f85149";
     rxChar = null; txChar = null; rxBuffer = "";
-    setStatus(false);
 }
 
-// ===============================
-// FUNGSI SETTINGS (DIKIRIM KE ESP32)
-// ===============================
+// =============================================================
+//  FITUR PENINGKATAN BARU: SCANNING BLE DI SISI SMARTPHONE (HP)
+// =============================================================
 
+async function scanForNearbyDevices() {
+    const container = document.getElementById('scan-results-container');
+    const title = document.getElementById('scan-title');
+    
+    if (!navigator.bluetooth) {
+        alert("Web Bluetooth tidak didukung pada browser atau perangkat Anda!");
+        return;
+    }
+
+    discoveredDevices = [];
+    if (container) container.innerHTML = '<span style="color:var(--orange); font-size:12px;">Membuka jendela pemindaian HP...</span>';
+
+    try {
+        console.log("Memulai pemindaian BLE via Smartphone...");
+        title.innerText = "MEMINDAI DARI HP...";
+        
+        // Membuka jendela penyeleksi bawaan Chrome untuk memilih Tag BLE secara instan
+        const device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [] 
+        });
+
+        if (device) {
+            console.log('Perangkat dipilih:', device.name, device.id);
+            discoveredDevices.push({
+                name: device.name || "Perangkat Tanpa Nama",
+                mac: device.id 
+            });
+            renderSmartphoneScanResults();
+        }
+
+    } catch (error) {
+        console.error("Gagal memindai: ", error);
+        if (container) container.innerHTML = '<span style="color:var(--accent-red); font-size:12px;">Pemindaian dibatalkan atau tidak didukung browser.</span>';
+        title.innerText = "PEMINDAIAN BATAL";
+    }
+}
+
+function renderSmartphoneScanResults() {
+    const container = document.getElementById('scan-results-container');
+    const title = document.getElementById('scan-title');
+    if (!container) return;
+
+    container.innerHTML = "";
+    title.innerText = `TEMUAN HP (${discoveredDevices.length})`;
+
+    if (discoveredDevices.length === 0) {
+        container.innerHTML = '<span style="color:var(--text-dim); font-size:12px;">Tidak ada perangkat ditemukan.</span>';
+        return;
+    }
+
+    discoveredDevices.forEach((d, index) => {
+        container.innerHTML += `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; padding:8px 10px; border-radius:6px; border:1px solid #30363d; margin-top:5px;">
+            <div style="max-width: 60%;">
+                <span style="font-weight:bold; font-size:13px; color:white;">${d.name}</span><br>
+                <small style="font-family:monospace; color:var(--text-dim); font-size:11px; word-break:break-all;">ID: ${d.mac}</small>
+            </div>
+            <div style="display:flex; gap:5px;">
+                <button onclick="sendSelectedTag(1, '${d.mac}')" style="background:var(--cyan); border:none; padding:6px 8px; border-radius:4px; color:white; font-size:11px; font-weight:bold; cursor:pointer;">Set #1</button>
+                <button onclick="sendSelectedTag(2, '${d.mac}')" style="background:var(--purple); border:none; padding:6px 8px; border-radius:4px; color:white; font-size:11px; font-weight:bold; cursor:pointer;">Set #2</button>
+            </div>
+        </div>`;
+    });
+}
+
+async function sendSelectedTag(slot, macAddress) {
+    if (!isConnected || !rxChar) {
+        alert("Hubungkan Bluetooth ke Dashboard motor terlebih dahulu!");
+        return;
+    }
+    
+    const command = `ADDTAG,${slot},${macAddress}`;
+    try {
+        await rxChar.writeValue(new TextEncoder().encode(command));
+        alert(`Perintah registrasi dikirim ke Motor! Slot #${slot} -> ${macAddress}`);
+        
+        const box = document.getElementById('scan-list-box');
+        if (box) box.style.display = "none";
+    } catch (e) {
+        alert("Gagal mengirim data ke motor: " + e);
+    }
+}
+
+// --- PENGATURAN UMUM YANG DIKIRIM KE MOTOR ---
 async function sendSplash() {
     if (!rxChar) { alert("Hubungkan Bluetooth!"); return; }
     const v = document.getElementById('splashInput').value.trim();
@@ -444,7 +475,7 @@ async function sendAlarmOled() {
     const en = document.getElementById('oledAlarmEn').checked ? 1 : 0;
     const limit = document.getElementById('oledAlarmLimit').value;
     const cmd = `ALARM,OLED,${en},${limit}`;
-    try { await rxChar.writeValue(new TextEncoder().encode(cmd)); alert("OLED Warning berhasil disimpan!"); } catch (e) { alert("Gagal: " + e); }
+    try { await rxChar.writeValue(new TextEncoder().encode(cmd)); alert("OLED Warning disimpan!"); } catch (e) { alert("Gagal: " + e); }
 }
 
 async function sendAlarmBuzzer() {
@@ -452,7 +483,7 @@ async function sendAlarmBuzzer() {
     const en = document.getElementById('buzzAlarmEn').checked ? 1 : 0;
     const limit = document.getElementById('buzzAlarmLimit').value;
     const cmd = `ALARM,BUZZ,${en},${limit}`;
-    try { await rxChar.writeValue(new TextEncoder().encode(cmd)); alert("Buzzer Warning berhasil disimpan!"); } catch (e) { alert("Gagal: " + e); }
+    try { await rxChar.writeValue(new TextEncoder().encode(cmd)); alert("Buzzer Warning disimpan!"); } catch (e) { alert("Gagal: " + e); }
 }
 
 async function sendTripCalibration() {
@@ -492,10 +523,6 @@ async function sendSleepToggle() {
     try { await rxChar.writeValue(new TextEncoder().encode(command)); } catch(e) { console.error(e); }
 }
 
-// ==========================================
-// FUNGSI CONTROL KEYLESS (WEB TO ESP32)
-// ==========================================
-
 async function sendKeylessToggle() {
     if(!rxChar) { alert("Hubungkan Bluetooth!"); return; }
     let en = document.getElementById('keylessEn').checked ? 1 : 0;
@@ -511,71 +538,6 @@ async function sendKeylessRssi() {
     } catch(e) { console.error(e); }
 }
 
-async function startBleScan() {
-    if(!rxChar) { alert("Hubungkan Bluetooth!"); return; }
-    discoveredDevices = []; // Reset penampung
-    const container = document.getElementById('scan-results-container');
-    if (container) container.innerHTML = '<span style="color:var(--orange); font-size:12px;">Mencari tag sekitar... (Mohon tunggu 4 detik)</span>';
-    
-    const box = document.getElementById('scan-list-box');
-    if (box) box.style.display = "block";
-
-    try {
-        await rxChar.writeValue(new TextEncoder().encode("SCANBLE"));
-    } catch(e) { console.error(e); }
-}
-
-function handleWebScanStatus(status) {
-    const title = document.getElementById('scan-title');
-    if (status === "START") {
-        if (title) title.innerText = "PENCARIAN SEDANG BERJALAN...";
-    } else if (status === "END") {
-        if (title) title.innerText = `PENCARIAN SELESAI (${discoveredDevices.length})`;
-        renderScanResults();
-    }
-}
-
-function handleWebScanDevice(device) {
-    if (!discoveredDevices.some(d => d.mac === device.mac)) {
-        discoveredDevices.push(device);
-    }
-}
-
-function renderScanResults() {
-    const container = document.getElementById('scan-results-container');
-    if (!container) return;
-    container.innerHTML = "";
-
-    if (discoveredDevices.length === 0) {
-        container.innerHTML = '<span style="color:var(--text-dim); font-size:12px;">Tidak ditemukan perangkat BLE di dekat Anda.</span>';
-        return;
-    }
-
-    discoveredDevices.forEach(d => {
-        container.innerHTML += `
-        <div style="display:flex; justify-content:space-between; align-items:center; background:#161b22; padding:8px 10px; border-radius:6px; border:1px solid #30363d;">
-            <div>
-                <span style="font-weight:bold; font-size:13px; color:white;">${d.name}</span><br>
-                <small style="font-family:monospace; color:var(--text-dim); font-size:11px;">${d.mac} [${d.rssi} dBm]</small>
-            </div>
-            <div style="display:flex; gap:5px;">
-                <button onclick="registerTag(1, '${d.mac}')" style="background:var(--cyan); border:none; padding:5px 8px; border-radius:4px; color:white; font-size:10px; font-weight:bold; cursor:pointer;">Set #1</button>
-                <button onclick="registerTag(2, '${d.mac}')" style="background:var(--purple); border:none; padding:5px 8px; border-radius:4px; color:white; font-size:10px; font-weight:bold; cursor:pointer;">Set #2</button>
-            </div>
-        </div>`;
-    });
-}
-
-async function registerTag(slot, mac) {
-    if(!rxChar) return;
-    try {
-        await rxChar.writeValue(new TextEncoder().encode(`ADDTAG,${slot},${mac}`));
-        alert(`Smart Tag #${slot} berhasil didaftarkan ke MAC: ${mac}`);
-        const box = document.getElementById('scan-list-box');
-        if (box) box.style.display = "none";
-    } catch(e) { alert(e); }
-}
-
 async function deleteTag(slot) {
     if(!rxChar) return;
     if(confirm(`Apakah Anda yakin ingin menghapus Tag #${slot}?`)) {
@@ -584,6 +546,32 @@ async function deleteTag(slot) {
             alert(`Tag #${slot} berhasil dihapus.`);
         } catch(e) { alert(e); }
     }
+}
+
+async function registerManualTag(slot) {
+    const macInput = document.getElementById(`manual-mac-input-${slot}`);
+    if (!macInput) return;
+    let mac = macInput.value.trim().toUpperCase();
+    
+    if (mac.length < 12) {
+        alert("Format MAC Address tidak valid! Harus berupa 12 karakter hexadesimal.");
+        return;
+    }
+    
+    mac = mac.replace(/:/g, '');
+    let formattedMac = "";
+    for (let i = 0; i < mac.length; i += 2) {
+        formattedMac += mac.substring(i, i + 2);
+        if (i < 10) formattedMac += ":";
+    }
+    
+    if (formattedMac.length !== 17) {
+        alert("Alamat MAC tidak valid! Pastikan berisi 6 segmen hexadesimal.");
+        return;
+    }
+
+    await sendSelectedTag(slot, formattedMac);
+    macInput.value = "";
 }
 
 function generateCells() {

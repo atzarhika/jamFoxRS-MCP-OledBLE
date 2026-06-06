@@ -3,7 +3,7 @@
 **Deskripsi Proyek:**
 VOTOL Smart Dashboard adalah instrumen kokpit tambahan berteknologi tinggi untuk motor listrik dengan *controller* VOTOL (khususnya Polytron Fox-R). Alat ini membaca data spesifik pabrikan (Suhu, RPM, Voltase, Arus, hingga Status Per-Cell Baterai BMS) langsung dari jalur CAN Bus menggunakan modul MCP2515.
 
-Pada versi **V15.1 (Pro Edition)** ini, alat telah dilengkapi dengan **Bluetooth Low Energy (BLE) Live Streaming** yang memungkinkan data motor ditampilkan secara *real-time* ke layar HP Anda melalui Web Dashboard, tanpa memerlukan aplikasi tambahan atau server khusus.
+Pada versi ini, alat telah dilengkapi dengan **Bluetooth Low Energy (BLE) Live Streaming** yang memungkinkan data motor ditampilkan secara *real-time* ke layar HP Anda melalui Web Dashboard, tanpa memerlukan aplikasi tambahan atau server khusus.
 
 ---
 **⭐ Fitur Pintar Otomatis (Smart Overlays):**
@@ -19,7 +19,8 @@ Pada versi **V15.1 (Pro Edition)** ini, alat telah dilengkapi dengan **Bluetooth
 * Modul RTC (DS3231) untuk jam *offline* super akurat. Syncron jam melalui BLE di web.
 * **Early Warning System (Buzzer):** Alarm kecepatan tinggi dan indikator gigi mundur.
 * Perlindungan logika *Anti-Regen* agar pengereman regeneratif tidak disalahartikan sebagai pengecasan.
-* **Sistem Menu On-Device:** Pengaturan alat (Sound, BLE, NTP) langsung dari tombol fisik layar.
+* **Sistem Menu On-Device:** Pengaturan alat (Sound, BLE, NTP, dll.) langsung dari tombol fisik layar.
+* Fitur Keyless di GPIO20
 
 ---
 
@@ -29,7 +30,7 @@ Pada versi **V15.1 (Pro Edition)** ini, alat telah dilengkapi dengan **Bluetooth
 2. **Modul Pembaca CAN:** MCP2515 (Transceiver SPI). 
    *(Catatan Penting: Modul harus menggunakan crystal 8MHz. Jika tertulis 16.000 pada crystal-nya, kode harus disesuaikan ke `MCP_16MHZ`).*
 3. **Layar Display:** OLED SSD1306 ukuran 0.91 inch (128x32 pixel), antarmuka I2C.
-4. **Modul Waktu (RTC):** DS3231 (Akurat dengan baterai kancing), antarmuka I2C.
+4. **Modul Waktu (RTC):** DS3231 / DS1317 Jika menggunakan DS3231 alamat eprom 0X57, Jika DS1307 eprom di 0x50 (Akurat dengan baterai kancing), antarmuka I2C. Khusus DS1307 pake power vcc di 5v.
 5. **Tombol Navigasi:** 1 buah *tactile switch* (Push Button).
 6. **Buzzer Aktif ATAU Pasive 3V:** Untuk *feedback* suara dan peringatan keselamatan.
 7. **Jumper Cap (120 Ohm):** Opsional dipasang pada terminal resistor modul MCP2515 untuk mencegah *noise* data pada CAN Bus.
@@ -37,6 +38,8 @@ Pada versi **V15.1 (Pro Edition)** ini, alat telah dilengkapi dengan **Bluetooth
 9. **Modul stepdown Fix 5v MP1584** : Untuk menurunkan tegangan 12v ke 5v dari reducer.
 10. **Kapasitor Elco 47uF 16v 1000uF** : penyimpan muatan listrik sementara dan penstabil arus.
 11. 2x **Kapasitor Keramik** (U5 = 2A104J & U3 = 104) : penyaring noise (filter) frekuensi tinggi, serta decoupling pada rangkaian elektronik.
+12. 1x Resistor 4K7 Ohm (R1) dan 2x Resistor 330 ohm (R2 & R3) : Untuk optocoupler keyless edition (Optional).
+13. 2X Optocoupler PC817 (Keyles Edition).
 
 
 Atau untuk mempermudah dan menghindari kesalahan wiring bisa pake pcb https://id.shp.ee/qLKv1pAj
