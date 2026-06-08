@@ -12,7 +12,7 @@ class MyServerCallbacks: public BLEServerCallbacks {
     void onDisconnect(BLEServer* pServer) { deviceConnected = false; }
 };
 
-// Callback deteksi beacon tag Keyless sekitar
+// Callback deteksi beacon tag Keyless sekitar secara realtime
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
         String address = advertisedDevice.getAddress().toString().c_str();
@@ -22,7 +22,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
         if (keylessEnabled && rssi >= keylessRssiThreshold) {
             if ((registeredTag1.length() > 0 && address == registeredTag1) ||
                 (registeredTag2.length() > 0 && address == registeredTag2)) {
-                lastTagSeenTime = millis(); 
+                lastTagSeenTime = millis(); // Perbarui waktu deteksi Tag instan secara langsung
             }
         }
 
@@ -93,6 +93,8 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                         if (!keylessEnabled) {
                             digitalWrite(RELAY_PIN, HIGH); 
                             relayState = true;
+                        } else {
+                            lastTagSeenTime = millis(); // Set jangkauan awal saat diaktifkan lewat HP
                         }
                     }
                     playBeep(150, 2500);
@@ -169,10 +171,9 @@ inline void initBLE() {
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setActiveScan(true);
   
-  // OPTIMASI CONCURRENCY: Menurunkan duty cycle scan ke 50% (Interval 100ms, Window 50ms)
-  // Menyediakan alokasi slot waktu sisa yang luas bagi koneksi GATT Server telemetri & write commands
-  pBLEScan->setInterval(160); // 160 * 0.625ms = 100ms
-  pBLEScan->setWindow(80);    // 80 * 0.625ms = 50ms
+  // Optimasi parameter scanner agar responsif dan hemat daya
+  pBLEScan->setInterval(160); 
+  pBLEScan->setWindow(80);    
   
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
@@ -182,32 +183,70 @@ inline void initBLE() {
 }
 
 inline void handleKeylessScan() {
-    // Jika bluetooth mati, bypass sistem pengunci
     if (!bleEnabled) {
         digitalWrite(RELAY_PIN, HIGH);
         relayState = true;
+        inShutdownWarning = false;
         return;
     }
 
     unsigned long now = millis();
 
+    // =========================================================================
+    // INTEGRASI INDIKATOR SISTEM BERGERAK (MOTION SAFETY LOCK GANDA)
+    // =========================================================================
+    // Deteksi apakah motor terdeteksi sedang melaju atau dinamo berputar (berdasarkan CAN Votol)
+    bool isMotorMoving = (speed_kmh > 0 || rpm > 0);
+
     // 1. Logika Pengunci Relay (Hanya mengunci jika Keyless AKTIF)
     if (keylessEnabled) {
-        // Safety Interlock: Hanya kunci relay jika motor diam total
-        if (now - lastTagSeenTime < 20000 || speed_kmh > 0 || rpm > 0) {
+        // JIKA TAG TERDETEKSI ATAU MOTOR SEDANG BERJALAN:
+        // Segera paksa relay HIGH (menyala) dan matikan seluruh hitung mundur shutdown
+        if (now - lastTagSeenTime < 25000 || isMotorMoving) {
             digitalWrite(RELAY_PIN, HIGH);
             relayState = true;
-        } else {
-            digitalWrite(RELAY_PIN, LOW); 
-            relayState = false;
+            inShutdownWarning = false;
+            shutdownWarningStartTime = 0;
+        }
+        // JIKA TAG TIDAK TERDETEKSI > 1 DETIK, MOTOR DIAM TOTAL, DAN BELUM MASUK WARNING:
+        // Masuk ke mode warning (Masa Tenggang Grace Period)
+        else if (now - lastTagSeenTime >= 1000 && !isMotorMoving && !inShutdownWarning) {
+            inShutdownWarning = true;
+            shutdownWarningStartTime = now;
+            Serial.println("[KEYLESS] Tag keluar jangkauan & motor diam. Memulai hitung mundur...");
+        }
+
+        // EVALUASI MASA TENGGANG KEPUTUSAN (GRACE PERIOD)
+        if (inShutdownWarning) {
+            // Pengaman Tambahan: Jika motor tiba-tiba digas atau bergerak selama hitung mundur,
+            // batalkan instan status shutdown warning demi keselamatan berkendara!
+            if (isMotorMoving) {
+                digitalWrite(RELAY_PIN, HIGH);
+                relayState = true;
+                inShutdownWarning = false;
+                shutdownWarningStartTime = 0;
+            } else {
+                unsigned long elapsed = now - shutdownWarningStartTime;
+                if (elapsed < 9000) { // Masa tenggang 9 detik penuh
+                    digitalWrite(RELAY_PIN, HIGH);
+                    relayState = true;
+                } else {
+                    // Hanya jika motor DIAM total selama 10 detik dan Tag benar-benar hilang, 
+                    // putus aliran SSR kelistrikan secara aman (Off saat parkir)
+                    digitalWrite(RELAY_PIN, LOW); 
+                    relayState = false;
+                }
+            }
         }
     } else {
         // Jika Keyless dimatikan, paksa Relay selalu ON (Bypass)
         digitalWrite(RELAY_PIN, HIGH);
         relayState = true;
+        inShutdownWarning = false;
+        shutdownWarningStartTime = 0;
     }
 
-    // 2. Logika Manual Scan dari Web UI (Dapat diakses walau Keyless OFF)
+    // 2. Logika Manual Scan dari Web UI (Mengecek dan menghentikan background scan terlebih dahulu)
     if (triggerWebScan) {
         triggerWebScan = false;
         isScanningActive = true;
@@ -216,16 +255,24 @@ inline void handleKeylessScan() {
             pCharacteristic->setValue((uint8_t*)"{\"scan_status\":\"START\"}\n", 23);
             pCharacteristic->notify();
         }
-        BLEDevice::getScan()->start(4, &scanCompleteCB, false); 
+        BLEDevice::getScan()->stop(); // Hentikan background scan
+        BLEDevice::getScan()->start(4, &scanCompleteCB, false); // Jalankan scan manual 4 detik
         lastScanTime = millis();
         return;
     }
 
-    // 3. Logika Scan Latar Belakang Periodik (Hanya berjalan jika Keyless aktif untuk deteksi tag)
-    if (keylessEnabled && (now - lastScanTime > 8000) && !isScanningActive) {
+    // 3. SELEF-HEALING INDESTRUCTIBLE SCAN LOOP (AUTO-RESTART CONTINUOUS SCAN)
+    if (keylessEnabled && !isScanningActive && !webScanActive) {
         isScanningActive = true;
-        BLEDevice::getScan()->start(2, &scanCompleteCB, false); 
+        BLEDevice::getScan()->start(3, &scanCompleteCB, false);
         lastScanTime = now;
+    }
+
+    // WATCHDOG PROTECTION FAILSAFE: 
+    if (keylessEnabled && isScanningActive && (now - lastScanTime > 6000)) {
+        Serial.println("[KEYLESS] Watchdog terpicu! Mengatur ulang modul pemindai BLE...");
+        BLEDevice::getScan()->stop();
+        isScanningActive = false;
     }
 }
 
@@ -287,8 +334,6 @@ inline void handleBLE() {
     uint32_t now = millis();
     
     // PEMBATASAN TRAFIK (CONGESTION CONTROL):
-    // Jika pemindaian aktif berjalan di HP, kendalikan pacing pengiriman telemetri utama menjadi 1000ms (1Hz)
-    // guna menghindari tabrakan buffer (collision) dan melancarkan respon perintah penulisan (write commands) HP.
     uint32_t telemetryPacing = webScanActive ? 1000 : 200;
 
     if (!bleTxInProgress && (now - lastDataSend >= telemetryPacing)) { 

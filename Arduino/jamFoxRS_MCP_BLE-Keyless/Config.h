@@ -38,7 +38,6 @@
 #define ADDR_TRIP_WH 4     
 
 // ================= DEKLARASI EXTERN VARIABEL GLOBAL =================
-// (Mencegah error 'multiple definition' saat proses linking)
 extern const char* FW_VERSION;
 extern const char* ntpServer;
 extern const long gmtOffset_sec;
@@ -89,6 +88,11 @@ extern bool bmsChargingFlag;
 
 extern int brakeActive; extern int cruiseActive; extern int standActive;
 
+// Variabel Kontrol Popup Cruise & Failsafe Komunitas
+extern bool showCruisePopup;
+extern unsigned long lastCruiseChange;
+extern unsigned long lastCanPacketTime; 
+
 extern uint32_t canMsgCount; extern uint32_t canMessagesPerSec; extern uint32_t lastSecond;
 extern unsigned long heartbeatCounter;
 
@@ -116,6 +120,8 @@ extern bool keylessEnabled;
 extern String registeredTag1;
 extern String registeredTag2;
 extern unsigned long lastTagSeenTime;
+extern bool inShutdownWarning;                  // Status masa tenggang shutdown keyless
+extern unsigned long shutdownWarningStartTime;  // Waktu mulai masa tenggang shutdown keyless
 extern bool relayState;
 extern bool triggerWebScan;
 extern bool webScanActive; 
@@ -131,7 +137,7 @@ extern bool deviceConnected; extern bool oldDeviceConnected;
 extern char bleTxBuf[2200]; extern uint16_t bleTxLen, bleTxOffset;
 extern bool bleTxInProgress; extern uint32_t lastDataSend;
 
-// ================= PROTOTIPE FUNGSI (FORWARD DECLARATIONS) =================
+// ================= PROTOTIPE FUNGSI =================
 void showCenteredText(String text, int yPos);
 void setBuzzer(bool state, int freq = 2000);
 void playBeep(int duration, int freq = 2000);

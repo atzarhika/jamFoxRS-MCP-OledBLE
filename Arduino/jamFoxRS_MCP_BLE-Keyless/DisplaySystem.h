@@ -36,8 +36,76 @@ inline void executeSettingAction() {
 
 inline void updateOLED() {
   if (!oledOk) return; 
-  if (bleEnabled && currentPage != 1 && currentPage != 5 && !inSettingsMode) { currentPage = 1; }
+
+  // --- HIBERNATE LAYAR FISIK HANYA BERDASARKAN STATUS RELAY STATE (SINKRON DENGAN SISTEM PARKIR) ---
+  static bool screenWakeState = true;
+  if (keylessEnabled && !relayState) {
+      if (screenWakeState) {
+          display.clearDisplay();
+          display.display();
+          display.ssd1306_command(SSD1306_DISPLAYOFF); // Matikan layar fisik sepenuhnya
+          screenWakeState = false;
+      }
+      return; 
+  } else {
+      if (!screenWakeState) {
+          display.ssd1306_command(SSD1306_DISPLAYON); // Nyalakan layar kembali
+          screenWakeState = true;
+      }
+  }
+
   display.clearDisplay(); display.setTextColor(SSD1306_WHITE);
+
+  // --- POPUP WARNING GRACE PERIOD (COUNTDOWN DELAY):
+  // Memberikan tanda visual hitung mundur berkedip cepat (300ms) sebelum mematikan kelistrikan utama
+  if (keylessEnabled && inShutdownWarning) {
+      unsigned long elapsed = millis() - shutdownWarningStartTime;
+      int secondsLeft = 9 - (elapsed / 1000);
+      if (secondsLeft < 0) secondsLeft = 0;
+
+      if ((millis() / 300) % 2 == 0) { // Efek kedip cepat
+          display.setFont(&FreeSansBold9pt7b);
+          showCenteredText("ALERT", 14);
+          display.setFont(); 
+          display.setTextSize(1);
+          display.setCursor(0, 24);
+          display.printf("LOCKING SYSTEM IN %dS", secondsLeft);
+      } else {
+          display.clearDisplay(); 
+      }
+      display.display();
+      return; // Kunci layar OLED selama masa tenggang
+  }
+
+  // --- WARNING STANDAR SAMPING BERKEDIP DURASI PENUH ---
+  if (standActive == 1) {
+      if ((millis() / 450) % 2 == 0) { 
+          display.setFont(&FreeSansBold9pt7b);
+          showCenteredText("STAND DOWN!", 16);
+          display.setFont(); 
+          display.setTextSize(1);
+          showCenteredText("LIFT STAND TO RIDE", 28);
+      } else {
+          display.clearDisplay(); 
+      }
+      display.display();
+      return; 
+  }
+
+  // --- POPUP INTERAKTIF CRUISE CONTROL 3 DETIK ---
+  if (showCruisePopup) {
+      if (millis() - lastCruiseChange < 3000) {
+          display.setFont(&FreeSansBold9pt7b);
+          showCenteredText("CRUISE ACTIVE", 16);
+          display.setFont();
+          display.setTextSize(1);
+          showCenteredText("SPEED LOCKED", 28);
+          display.display();
+          return;
+      } else {
+          showCruisePopup = false; 
+      }
+  }
 
   if (inSettingsMode) {
     display.setFont(); display.setTextSize(1); 

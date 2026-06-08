@@ -6,7 +6,7 @@
 #include "DisplaySystem.h"
 
 // ================= ALOKASI & DEFINISI VARIABEL GLOBAL SEBENARNYA =================
-const char* FW_VERSION = "V15.45-beta";
+const char* FW_VERSION = "V15.48-beta";
 const char* ntpServer  = "pool.ntp.org";
 const long  gmtOffset_sec = 7 * 3600; 
 const int   daylightOffset_sec = 0;
@@ -61,6 +61,11 @@ bool bmsChargingFlag = false;
 
 int brakeActive = 0; int cruiseActive = 0; int standActive = 0;
 
+// Alokasi memori global fitur-fitur baru
+bool showCruisePopup = false;
+unsigned long lastCruiseChange = 0;
+unsigned long lastCanPacketTime = 0; 
+
 uint32_t canMsgCount = 0; uint32_t canMessagesPerSec = 0; uint32_t lastSecond = 0;
 unsigned long heartbeatCounter = 0;
 
@@ -86,6 +91,9 @@ bool keylessEnabled = false;
 String registeredTag1 = "";
 String registeredTag2 = "";
 unsigned long lastTagSeenTime = 0;
+unsigned long lastPingTime = 0; 
+bool inShutdownWarning = false;                 
+unsigned long shutdownWarningStartTime = 0;     
 bool relayState = false;
 bool triggerWebScan = false;
 bool webScanActive = false; 
@@ -255,7 +263,11 @@ void setup() {
   
   if (canOk) { CAN0.setMode(MCP_NORMAL); }
   lastCalcTime = millis();
-  if (bleEnabled) { initBLE(); }
+  
+  if (bleEnabled) { 
+      initBLE(); 
+      // Background scan diatur dan dijalankan secara otomatis di dalam handleKeylessScan()
+  }
 }
 
 // ================= LOOP UTAMA =================

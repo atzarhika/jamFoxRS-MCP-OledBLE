@@ -35,7 +35,16 @@ inline void readCAN() {
       
       // 2. Ekstraksi Smart Transisi (Low-Nibble)
       brakeActive = (lowNibble & 0x02) != 0 ? 1 : 0;
-      cruiseActive = (lowNibble & 0x04) != 0 ? 1 : 0;
+      
+      // --- PENYEMPURNAAN KOMUNITAS: DETEKSI RISING EDGE UNTUK POPUP CRUISE ---
+      int parsedCruise = (lowNibble & 0x04) != 0 ? 1 : 0;
+      if (parsedCruise == 1 && cruiseActive == 0) {
+          showCruisePopup = true;
+          lastCruiseChange = millis();
+          playBeep(150, 2000); // Beep feedback fisik
+      }
+      cruiseActive = parsedCruise;
+      
       standActive = (lowNibble & 0x08) != 0 ? 1 : 0;
 
       // Timpa mode utama dengan prioritas visual untuk aspek informatif
