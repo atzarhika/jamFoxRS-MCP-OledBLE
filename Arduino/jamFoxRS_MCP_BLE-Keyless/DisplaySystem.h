@@ -84,7 +84,7 @@ inline void updateOLED() {
           showCenteredText("STAND DOWN!", 16);
           display.setFont(); 
           display.setTextSize(1);
-          showCenteredText("LIFT TO RIDE", 8);
+          showCenteredText("LIFT TO RIDE", 25);
       } else {
           display.clearDisplay(); 
       }
@@ -99,7 +99,7 @@ inline void updateOLED() {
           showCenteredText("CRUISE ON", 16);
           display.setFont();
           display.setTextSize(1);
-          showCenteredText("SPEED LOCKED", 8);
+          showCenteredText("SPEED LOCKED", 25);
           display.display();
           return;
       } else {
