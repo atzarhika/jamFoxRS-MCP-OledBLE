@@ -84,7 +84,7 @@ inline void updateOLED() {
           showCenteredText("STAND DOWN!", 16);
           display.setFont(); 
           display.setTextSize(1);
-          showCenteredText("LIFT STAND TO RIDE", 28);
+          showCenteredText("LIFT TO RIDE", 8);
       } else {
           display.clearDisplay(); 
       }
@@ -96,10 +96,10 @@ inline void updateOLED() {
   if (showCruisePopup) {
       if (millis() - lastCruiseChange < 3000) {
           display.setFont(&FreeSansBold9pt7b);
-          showCenteredText("CRUISE ACTIVE", 16);
+          showCenteredText("CRUISE ON", 16);
           display.setFont();
           display.setTextSize(1);
-          showCenteredText("SPEED LOCKED", 28);
+          showCenteredText("SPEED LOCKED", 8);
           display.display();
           return;
       } else {
