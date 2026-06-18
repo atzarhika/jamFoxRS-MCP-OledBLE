@@ -24,6 +24,7 @@ let currentGPS = { lat: 0, lon: 0, alt: 0 };
 let wakeLock = null;
 
 let discoveredDevices = []; // Menyimpan perangkat hasil scan HP
+let currentCalFactor = 1.0000; // Global tracker kalibrasi ban untuk fine-tuning adjustment
 
 // --- GPS & WAKE LOCK ---
 if ("geolocation" in navigator) {
@@ -252,15 +253,16 @@ function updateUI(data) {
         }
     }
 
-    // UPDATE INDIKATOR SENSOR TRANSISI REAL-TIME (Cruise, Standar)
+    // UPDATE INDIKATOR TRANSISI
     const cruiseInd = document.getElementById('cruise-indicator');
     if (cruiseInd) cruiseInd.style.display = data.cruise === 1 ? 'flex' : 'none';
     const standInd = document.getElementById('stand-indicator');
     if (standInd) standInd.style.display = data.stand === 1 ? 'flex' : 'none';
 
     if (data.cal !== undefined) {
+        currentCalFactor = data.cal;
         let calEl = document.getElementById('calib-status');
-        if (calEl) calEl.innerText = data.cal.toFixed(3) + "x";
+        if (calEl) calEl.innerText = data.cal.toFixed(4) + "x";
     }
 }
 
@@ -323,7 +325,6 @@ async function toggleConnect() {
         bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
         const server = await bluetoothDevice.gatt.connect();
         const service = await server.getPrimaryService(SERVICE_UUID);
-        
         txChar = await service.getCharacteristic(TX_CHAR_UUID);
         rxChar = await service.getCharacteristic(RX_CHAR_UUID);
         
@@ -365,10 +366,7 @@ function onDisconnected() {
     rxChar = null; txChar = null; rxBuffer = "";
 }
 
-// =============================================================
-//  FITUR PENINGKATAN BARU: SCANNING BLE DI SISI SMARTPHONE (HP)
-// =============================================================
-
+// --- SMARTPHONE BLE TAG SCANNER ---
 async function scanForNearbyDevices() {
     const container = document.getElementById('scan-results-container');
     const title = document.getElementById('scan-title');
@@ -385,7 +383,6 @@ async function scanForNearbyDevices() {
         console.log("Memulai pemindaian BLE via Smartphone...");
         title.innerText = "MEMINDAI DARI HP...";
         
-        // Membuka jendela penyeleksi bawaan Chrome untuk memilih Tag BLE secara instan
         const device = await navigator.bluetooth.requestDevice({
             acceptAllDevices: true,
             optionalServices: [] 
@@ -450,6 +447,27 @@ async function sendSelectedTag(slot, macAddress) {
         if (box) box.style.display = "none";
     } catch (e) {
         alert("Gagal mengirim data ke motor: " + e);
+    }
+}
+
+// =========================================================================
+//  FITUR BARU: TOMBOL FINE TUNING MULTIPLIER (ADJUSTMENT KALIBRASI HALUS)
+// =========================================================================
+async function adjustCalib(delta) {
+    if(!rxChar) { alert("Hubungkan Bluetooth!"); return; }
+    let newCal = currentCalFactor + delta;
+    if (newCal < 0.5 || newCal > 2.0) {
+        alert("Nilai kalibrasi berada di luar batas aman (0.5x - 2.0x)!");
+        return;
+    }
+    const command = `CALIB,${newCal.toFixed(4)}`;
+    try {
+        await rxChar.writeValue(new TextEncoder().encode(command));
+        currentCalFactor = newCal;
+        const calEl = document.getElementById('calib-status');
+        if (calEl) calEl.innerText = newCal.toFixed(4) + "x";
+    } catch(e) {
+        alert("Gagal melakukan adjustment kalibrasi: " + e);
     }
 }
 
@@ -559,6 +577,7 @@ async function registerManualTag(slot) {
     }
     
     mac = mac.replace(/:/g, '');
+    
     let formattedMac = "";
     for (let i = 0; i < mac.length; i += 2) {
         formattedMac += mac.substring(i, i + 2);
@@ -574,6 +593,7 @@ async function registerManualTag(slot) {
     macInput.value = "";
 }
 
+// --- UTILITY ---
 function generateCells() {
     const grid = document.getElementById('cell-grid');
     if (!grid || grid.children.length > 0) return;
@@ -590,6 +610,5 @@ function initCharts() {
     speedChart = new Chart(ctxS, { type:'line', data:{labels:Array(30).fill(''), datasets:[{data:[...speedHistory], borderColor:'#d29922', fill:true, backgroundColor:'rgba(210,153,34,0.1)'}]}, options:opt });
     currentChart = new Chart(ctxC, { type:'line', data:{labels:Array(30).fill(''), datasets:[{data:[...currentHistory], borderColor:'#58a6ff', fill:true, backgroundColor:'rgba(88,166,255,0.1)'}]}, options:opt });
 }
-
 window.addEventListener('DOMContentLoaded', () => loadPage('dash'));
 setInterval(() => { const clock = document.getElementById('clock'); if(clock) clock.innerText = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }, 1000);

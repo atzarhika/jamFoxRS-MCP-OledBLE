@@ -20,7 +20,7 @@ const unsigned long TAG_TIMEOUT_MS     = 5000; // Durasi jangkauan tag hilang se
 const unsigned long SHUTDOWN_GRACE_MS   = 10000; // Durasi masa tenggang visual OLED (Default: 10 detik)
 
 Adafruit_SSD1306 display(128, 32, &Wire, -1);
-RTC_DS3231 rtc; 
+RTC_DS1307 rtc; 
 MCP_CAN CAN0(MCP_CS_PIN);
 Preferences preferences;
 

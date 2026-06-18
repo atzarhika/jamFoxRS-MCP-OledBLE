@@ -33,7 +33,7 @@
 #define RELAY_PIN 20     
 
 // ================= KONFIGURASI MEMORI =================
-#define EEPROM_ADDR 0x57   
+#define EEPROM_ADDR 0x50   
 #define ADDR_TRIP_KM 0     
 #define ADDR_TRIP_WH 4     
 
@@ -53,7 +53,7 @@ extern const char* CHARACTERISTIC_UUID;
 extern const char* RX_CHAR_UUID;
 
 extern Adafruit_SSD1306 display;
-extern RTC_DS3231 rtc;
+extern RTC_DS1307 rtc;
 extern MCP_CAN CAN0;
 extern Preferences preferences;
 

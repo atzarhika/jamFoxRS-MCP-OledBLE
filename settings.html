@@ -172,6 +172,19 @@
             </div>
         </div>
         <button onclick="sendTripCalibration()" style="width: 100%; background: var(--orange); border: none; padding: 12px; border-radius: 8px; font-weight: bold; color: white; margin-top: 15px; cursor: pointer; transition: 0.2s;">HITUNG & SINKRONKAN KALIBRASI</button>
+        
+        <!-- =========================================================================
+         FITUR PENERIMAAN USULAN KOMUNITAS: FINE TUNING ADJUSTMENT MULTIPLIER MULTIPLE
+        ========================================================================= -->
+        <div style="border-top:1px dashed #30363d; margin-top:15px; padding-top:12px;">
+            <span style="font-size:11px; color:var(--text-dim); display:block; margin-bottom:8px;">Penyesuaian Halus Multiplier (Adjustment):</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <button onclick="adjustCalib(-0.005)" style="flex:1; background:#f85149; border:none; padding:8px; border-radius:6px; color:white; font-size:11px; font-weight:bold; cursor:pointer;">-0.005</button>
+                <button onclick="adjustCalib(-0.001)" style="flex:1; background:#f85149; border:none; padding:8px; border-radius:6px; color:white; font-size:11px; font-weight:bold; cursor:pointer;">-0.001</button>
+                <button onclick="adjustCalib(0.001)" style="flex:1; background:var(--green); border:none; padding:8px; border-radius:6px; color:white; font-size:11px; font-weight:bold; cursor:pointer;">+0.001</button>
+                <button onclick="adjustCalib(0.005)" style="flex:1; background:var(--green); border:none; padding:8px; border-radius:6px; color:white; font-size:11px; font-weight:bold; cursor:pointer;">+0.005</button>
+            </div>
+        </div>
     </div>
 
 </section>
