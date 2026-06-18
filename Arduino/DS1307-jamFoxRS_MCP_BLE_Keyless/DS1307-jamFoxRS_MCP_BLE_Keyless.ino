@@ -15,8 +15,8 @@ const char* SERVICE_UUID        = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
 const char* CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
 const char* RX_CHAR_UUID        = "beb5483e-36e1-4688-b7f5-ea07361b26a9";
 
-// Alokasi memori konfigurasi waktu Keyless (Konstanta Fisik default total: 15 detik)
-const unsigned long TAG_TIMEOUT_MS     = 5000; // Durasi jangkauan tag hilang sebelum warning (Default: 5 detik)
+// Alokasi memori konfigurasi waktu Keyless (Konstanta Fisik default total: 20 detik)
+const unsigned long TAG_TIMEOUT_MS     = 10000; // Durasi jangkauan tag hilang sebelum warning (Default: 10 detik)
 const unsigned long SHUTDOWN_GRACE_MS   = 10000; // Durasi masa tenggang visual OLED (Default: 10 detik)
 
 Adafruit_SSD1306 display(128, 32, &Wire, -1);
