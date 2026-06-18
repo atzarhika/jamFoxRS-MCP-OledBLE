@@ -133,8 +133,11 @@ void checkSerialCommands() {
         int c1 = input.indexOf(','); 
         int c2 = input.indexOf(',', c1 + 1); 
         if (c1 > 0 && c2 > 0) { 
+            // PERBAIKAN LOKAL NVS WRITING
+            preferences.begin("cfg", false);
             preferences.putString("ssid", input.substring(c1 + 1, c2)); 
             preferences.putString("pass", input.substring(c2 + 1)); 
+            preferences.end();
             ESP.restart(); 
         } 
     }
@@ -143,7 +146,10 @@ void checkSerialCommands() {
         if (c > 0) { 
             String s = input.substring(c + 1); 
             if (s.length() > 10) s = s.substring(0, 10); 
+            // PERBAIKAN LOKAL NVS WRITING
+            preferences.begin("cfg", false);
             preferences.putString("splash", s); 
+            preferences.end();
             ESP.restart(); 
         } 
     }
@@ -167,7 +173,7 @@ void setup() {
       prefs.putBool("keylessEn", false); 
       prefs.putString("tag1", "");       
       prefs.putString("tag2", "");       
-      prefs.end();
+      prefs.end(); // Tutup koneksi NVS
 
       digitalWrite(RELAY_PIN, HIGH);
       relayState = true;
@@ -194,7 +200,9 @@ void setup() {
   Wire.setTimeOut(100); 
   
   oledOk = display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-  preferences.begin("cfg", false);
+  
+  // PERBAIKAN KRUSIAL: Membaca NVS secara lokal dan langsung menutupnya
+  preferences.begin("cfg", true); // Membaca dalam mode read-only
 
   ssid = preferences.getString("ssid", "pixel8");      
   password = preferences.getString("pass", "1sampai8");
@@ -215,6 +223,8 @@ void setup() {
   registeredTag1 = preferences.getString("tag1", "");
   registeredTag2 = preferences.getString("tag2", "");
   keylessRssiThreshold = preferences.getInt("keyRssi", -80);
+  
+  preferences.end(); // Langsung tutup agar thread-safe!
 
   if (oledOk) {
       display.clearDisplay(); display.setFont(&FreeSansBold9pt7b); display.setTextColor(SSD1306_WHITE);
@@ -243,7 +253,11 @@ void setup() {
       trip_km = readEEPROMFloat(ADDR_TRIP_KM); trip_wh = readEEPROMFloat(ADDR_TRIP_WH);
   } else {
       extEepromAvailable = false; memoryInUse = "INTERNAL";
-      trip_km = preferences.getFloat("trip_km", 0.0); trip_wh = preferences.getFloat("trip_wh", 0.0);
+      
+      preferences.begin("cfg", true);
+      trip_km = preferences.getFloat("trip_km", 0.0); 
+      trip_wh = preferences.getFloat("trip_wh", 0.0);
+      preferences.end();
   }
   last_saved_trip_km = trip_km;
 
@@ -266,7 +280,6 @@ void setup() {
   
   if (bleEnabled) { 
       initBLE(); 
-      // Background scan diatur dan dijalankan secara otomatis di dalam handleKeylessScan()
   }
 }
 
@@ -293,7 +306,13 @@ void loop() {
       if (stopTime == 0) stopTime = now;
       if (now - stopTime > 5000) {  
           if (extEepromAvailable) { writeEEPROMFloat(ADDR_TRIP_KM, trip_km); writeEEPROMFloat(ADDR_TRIP_WH, trip_wh); } 
-          else { preferences.putFloat("trip_km", trip_km); preferences.putFloat("trip_wh", trip_wh); }
+          else { 
+              // PERBAIKAN LOKAL NVS WRITING
+              preferences.begin("cfg", false);
+              preferences.putFloat("trip_km", trip_km); 
+              preferences.putFloat("trip_wh", trip_wh); 
+              preferences.end();
+          }
           last_saved_trip_km = trip_km; 
           Serial.println("[MEMORY] Data Trip disimpan saat berhenti.");
           stopTime = 0;
@@ -330,7 +349,12 @@ void loop() {
           handled3s = true; handled5s = true; 
           trip_km = 0.0; trip_wh = 0.0; last_saved_trip_km = 0.0; 
           if (extEepromAvailable) { writeEEPROMFloat(ADDR_TRIP_KM, 0.0); writeEEPROMFloat(ADDR_TRIP_WH, 0.0); } 
-          else { preferences.putFloat("trip_km", 0.0); preferences.putFloat("trip_wh", 0.0); }
+          else { 
+              preferences.begin("cfg", false);
+              preferences.putFloat("trip_km", 0.0); 
+              preferences.putFloat("trip_wh", 0.0); 
+              preferences.end();
+          }
           playBeep(300, 1500);
           if(oledOk) { display.clearDisplay(); display.setFont(); display.setTextColor(SSD1306_WHITE); display.setTextSize(1); showCenteredText("TRIP RESET TO 0", 15); display.display(); delay(1500); }
       }

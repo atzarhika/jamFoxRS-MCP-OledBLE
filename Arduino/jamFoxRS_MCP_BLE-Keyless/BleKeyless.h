@@ -54,7 +54,12 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
             else if (rxStr.startsWith("SPLASH,")) {
                 String newSplash = rxStr.substring(7);
                 if (newSplash.length() > 10) newSplash = newSplash.substring(0, 10);
+                
+                // PERBAIKAN LOKAL NVS WRITING
+                preferences.begin("cfg", false);
                 preferences.putString("splash", newSplash);
+                preferences.end();
+                
                 splashText = newSplash; 
                 playBeep(150, 2500);
             }
@@ -65,6 +70,7 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                     int en = rxStr.substring(comma2 + 1, comma3).toInt();
                     int limit = rxStr.substring(comma3 + 1).toInt();
 
+                    preferences.begin("cfg", false);
                     if (type == "OLED") {
                         oledSpeedWarnEnable = (en == 1); oledSpeedWarnLimit = limit;
                         preferences.putBool("oledSpdEn", oledSpeedWarnEnable); preferences.putInt("oledSpd", oledSpeedWarnLimit);
@@ -72,6 +78,7 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                         buzzerSpeedWarnEnable = (en == 1); buzzerSpeedWarnLimit = limit;
                         preferences.putBool("buzzSpdEn", buzzerSpeedWarnEnable); preferences.putInt("buzzSpd", buzzerSpeedWarnLimit);
                     }
+                    preferences.end();
                     playBeep(150, 2500);
                 }
             }
@@ -81,6 +88,7 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                     String type = rxStr.substring(comma1 + 1, comma2);
                     int val = rxStr.substring(comma2 + 1).toInt();
                     
+                    preferences.begin("cfg", false);
                     if (type == "MODE") {
                         modePopupEnable = (val == 1);
                         preferences.putBool("popMode", modePopupEnable);
@@ -94,9 +102,10 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                             digitalWrite(RELAY_PIN, HIGH); 
                             relayState = true;
                         } else {
-                            lastTagSeenTime = millis(); // Set jangkauan awal saat diaktifkan lewat HP
+                            lastTagSeenTime = millis(); 
                         }
                     }
+                    preferences.end();
                     playBeep(150, 2500);
                 }
             }
@@ -104,7 +113,9 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                 float newCal = rxStr.substring(6).toFloat();
                 if(newCal > 0.5f && newCal < 2.0f) {
                     tripCalibration = newCal;
+                    preferences.begin("cfg", false);
                     preferences.putFloat("tripCal", tripCalibration);
+                    preferences.end();
                     playBeep(200, 3000);
                 }
             }
@@ -119,6 +130,8 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                     int slot = rxStr.substring(c1 + 1, c2).toInt();
                     String mac = rxStr.substring(c2 + 1);
                     mac.trim(); mac.toUpperCase();
+                    
+                    preferences.begin("cfg", false);
                     if (slot == 1) {
                         registeredTag1 = mac;
                         preferences.putString("tag1", registeredTag1);
@@ -126,11 +139,13 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                         registeredTag2 = mac;
                         preferences.putString("tag2", registeredTag2);
                     }
+                    preferences.end();
                     playBeep(150, 3000);
                 }
             }
             else if (rxStr.startsWith("DELTAG,")) {
                 int slot = rxStr.substring(7).toInt();
+                preferences.begin("cfg", false);
                 if (slot == 1) {
                     registeredTag1 = "";
                     preferences.putString("tag1", "");
@@ -138,13 +153,16 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
                     registeredTag2 = "";
                     preferences.putString("tag2", "");
                 }
+                preferences.end();
                 playBeep(150, 1500);
             }
             else if (rxStr.startsWith("KEYRSSI,")) {
                 int newRssi = rxStr.substring(8).toInt();
                 if (newRssi >= -100 && newRssi <= -40) {
                     keylessRssiThreshold = newRssi;
+                    preferences.begin("cfg", false);
                     preferences.putInt("keyRssi", keylessRssiThreshold);
+                    preferences.end();
                     playBeep(150, 3000);
                 }
             }
@@ -171,7 +189,6 @@ inline void initBLE() {
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setActiveScan(true);
   
-  // Optimasi parameter scanner agar responsif dan hemat daya
   pBLEScan->setInterval(160); 
   pBLEScan->setWindow(80);    
   
@@ -191,35 +208,22 @@ inline void handleKeylessScan() {
     }
 
     unsigned long now = millis();
-
-    // =========================================================================
-    // INTEGRASI INDIKATOR SISTEM BERGERAK (MOTION SAFETY LOCK GANDA)
-    // =========================================================================
-    // Deteksi apakah motor terdeteksi sedang melaju atau dinamo berputar (berdasarkan CAN Votol)
     bool isMotorMoving = (speed_kmh > 0 || rpm > 0);
 
-    // 1. Logika Pengunci Relay (Hanya mengunci jika Keyless AKTIF)
     if (keylessEnabled) {
-        // JIKA TAG TERDETEKSI ATAU MOTOR SEDANG BERJALAN:
-        // Segera paksa relay HIGH (menyala) dan matikan seluruh hitung mundur shutdown
         if (now - lastTagSeenTime < 25000 || isMotorMoving) {
             digitalWrite(RELAY_PIN, HIGH);
             relayState = true;
             inShutdownWarning = false;
             shutdownWarningStartTime = 0;
         }
-        // JIKA TAG TIDAK TERDETEKSI > 1 DETIK, MOTOR DIAM TOTAL, DAN BELUM MASUK WARNING:
-        // Masuk ke mode warning (Masa Tenggang Grace Period)
         else if (now - lastTagSeenTime >= 1000 && !isMotorMoving && !inShutdownWarning) {
             inShutdownWarning = true;
             shutdownWarningStartTime = now;
             Serial.println("[KEYLESS] Tag keluar jangkauan & motor diam. Memulai hitung mundur...");
         }
 
-        // EVALUASI MASA TENGGANG KEPUTUSAN (GRACE PERIOD)
         if (inShutdownWarning) {
-            // Pengaman Tambahan: Jika motor tiba-tiba digas atau bergerak selama hitung mundur,
-            // batalkan instan status shutdown warning demi keselamatan berkendara!
             if (isMotorMoving) {
                 digitalWrite(RELAY_PIN, HIGH);
                 relayState = true;
@@ -227,26 +231,22 @@ inline void handleKeylessScan() {
                 shutdownWarningStartTime = 0;
             } else {
                 unsigned long elapsed = now - shutdownWarningStartTime;
-                if (elapsed < 9000) { // Masa tenggang 9 detik penuh
+                if (elapsed < 9000) { 
                     digitalWrite(RELAY_PIN, HIGH);
                     relayState = true;
                 } else {
-                    // Hanya jika motor DIAM total selama 10 detik dan Tag benar-benar hilang, 
-                    // putus aliran SSR kelistrikan secara aman (Off saat parkir)
                     digitalWrite(RELAY_PIN, LOW); 
                     relayState = false;
                 }
             }
         }
     } else {
-        // Jika Keyless dimatikan, paksa Relay selalu ON (Bypass)
         digitalWrite(RELAY_PIN, HIGH);
         relayState = true;
         inShutdownWarning = false;
         shutdownWarningStartTime = 0;
     }
 
-    // 2. Logika Manual Scan dari Web UI (Mengecek dan menghentikan background scan terlebih dahulu)
     if (triggerWebScan) {
         triggerWebScan = false;
         isScanningActive = true;
@@ -255,20 +255,18 @@ inline void handleKeylessScan() {
             pCharacteristic->setValue((uint8_t*)"{\"scan_status\":\"START\"}\n", 23);
             pCharacteristic->notify();
         }
-        BLEDevice::getScan()->stop(); // Hentikan background scan
-        BLEDevice::getScan()->start(4, &scanCompleteCB, false); // Jalankan scan manual 4 detik
+        BLEDevice::getScan()->stop(); 
+        BLEDevice::getScan()->start(4, &scanCompleteCB, false); 
         lastScanTime = millis();
         return;
     }
 
-    // 3. SELEF-HEALING INDESTRUCTIBLE SCAN LOOP (AUTO-RESTART CONTINUOUS SCAN)
     if (keylessEnabled && !isScanningActive && !webScanActive) {
         isScanningActive = true;
         BLEDevice::getScan()->start(3, &scanCompleteCB, false);
         lastScanTime = now;
     }
 
-    // WATCHDOG PROTECTION FAILSAFE: 
     if (keylessEnabled && isScanningActive && (now - lastScanTime > 6000)) {
         Serial.println("[KEYLESS] Watchdog terpicu! Mengatur ulang modul pemindai BLE...");
         BLEDevice::getScan()->stop();
@@ -295,7 +293,6 @@ inline void buildJsonInto() {
       if (est_range > 130) est_range = 130; 
   }
 
-  // Mengirim data ke Web UI
   bleTxLen = snprintf(bleTxBuf, sizeof(bleTxBuf),
     "{\"rpm\":%d,\"speed\":%d,\"mode\":\"%s\",\"volts\":%.1f,\"amps\":%.1f,\"power\":%.0f,\"soc\":%d,"
     "\"trip\":{\"km\":%.1f,\"avg\":%.1f,\"range\":%d},\"cal\":%.3f,"
@@ -332,8 +329,6 @@ inline void handleBLE() {
 
   if (deviceConnected) {
     uint32_t now = millis();
-    
-    // PEMBATASAN TRAFIK (CONGESTION CONTROL):
     uint32_t telemetryPacing = webScanActive ? 1000 : 200;
 
     if (!bleTxInProgress && (now - lastDataSend >= telemetryPacing)) { 

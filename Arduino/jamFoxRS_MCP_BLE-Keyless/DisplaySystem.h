@@ -14,12 +14,15 @@ inline void showCenteredText(String text, int yPos) {
 }
 
 inline void executeSettingAction() {
+  // PERBAIKAN LOKAL NVS WRITING
+  preferences.begin("cfg", false);
   if (settingsCursor == 0) { 
       soundEnabled = !soundEnabled; preferences.putBool("snd", soundEnabled); playBeep(100, 3000);
   } else if (settingsCursor == 1) { 
       buzzerIsPassive = !buzzerIsPassive; preferences.putBool("buzzPass", buzzerIsPassive); playBeep(150, 3000); 
   } else if (settingsCursor == 2) { 
       bleEnabled = !bleEnabled; preferences.putBool("ble", bleEnabled); 
+      preferences.end();
       if(oledOk) { display.clearDisplay(); display.setFont(); display.setTextSize(1); showCenteredText("REBOOTING...", 15); display.display(); } 
       delay(1500); ESP.restart(); 
   } else if (settingsCursor == 3) { 
@@ -32,59 +35,42 @@ inline void executeSettingAction() {
   } else if (settingsCursor == 6) { 
       inSettingsMode = false; lastButtonPress = millis(); playBeep(100, 2000);
   }
+  preferences.end();
 }
 
 inline void updateOLED() {
   if (!oledOk) return; 
 
-  // --- HIBERNATE LAYAR FISIK HANYA BERDASARKAN STATUS RELAY STATE (SINKRON DENGAN SISTEM PARKIR) ---
   static bool screenWakeState = true;
   if (keylessEnabled && !relayState) {
       if (screenWakeState) {
           display.clearDisplay();
           display.display();
-          display.ssd1306_command(SSD1306_DISPLAYOFF); // Matikan layar fisik sepenuhnya
+          display.ssd1306_command(SSD1306_DISPLAYOFF); 
           screenWakeState = false;
       }
       return; 
   } else {
       if (!screenWakeState) {
-          display.ssd1306_command(SSD1306_DISPLAYON); // Nyalakan layar kembali
+          display.ssd1306_command(SSD1306_DISPLAYON); 
           screenWakeState = true;
       }
   }
 
   display.clearDisplay(); display.setTextColor(SSD1306_WHITE);
 
-  // --- POPUP WARNING GRACE PERIOD (COUNTDOWN DELAY):
-  // Memberikan tanda visual hitung mundur berkedip cepat (300ms) sebelum mematikan kelistrikan utama
   if (keylessEnabled && inShutdownWarning) {
       unsigned long elapsed = millis() - shutdownWarningStartTime;
-      int secondsLeft = 9 - (elapsed / 1000);
+      int secondsLeft = 10 - (elapsed / 1000);
       if (secondsLeft < 0) secondsLeft = 0;
 
-      if ((millis() / 300) % 2 == 0) { // Efek kedip cepat
+      if ((millis() / 300) % 2 == 0) { 
           display.setFont(&FreeSansBold9pt7b);
           showCenteredText("ALERT", 14);
           display.setFont(); 
           display.setTextSize(1);
           display.setCursor(0, 24);
-          display.printf("LOCKING SYSTEM IN %dS", secondsLeft);
-      } else {
-          display.clearDisplay(); 
-      }
-      display.display();
-      return; // Kunci layar OLED selama masa tenggang
-  }
-
-  // --- WARNING STANDAR SAMPING BERKEDIP DURASI PENUH ---
-  if (standActive == 1) {
-      if ((millis() / 450) % 2 == 0) { 
-          display.setFont(&FreeSansBold9pt7b);
-          showCenteredText("STAND DOWN!", 16);
-          display.setFont(); 
-          display.setTextSize(1);
-          showCenteredText("LIFT TO RIDE", 25);
+          display.printf("LOCKING IN %dS", secondsLeft);
       } else {
           display.clearDisplay(); 
       }
@@ -92,14 +78,27 @@ inline void updateOLED() {
       return; 
   }
 
-  // --- POPUP INTERAKTIF CRUISE CONTROL 3 DETIK ---
+  if (standActive == 1) {
+      if ((millis() / 450) % 2 == 0) { 
+          display.setFont(&FreeSansBold9pt7b);
+          showCenteredText("STAND DOWN!", 16);
+          display.setFont(); 
+          display.setTextSize(1);
+          showCenteredText("LIFT TO RIDE", 28);
+      } else {
+          display.clearDisplay(); 
+      }
+      display.display();
+      return; 
+  }
+
   if (showCruisePopup) {
       if (millis() - lastCruiseChange < 3000) {
           display.setFont(&FreeSansBold9pt7b);
-          showCenteredText("CRUISE ON", 16);
+          showCenteredText("CRUISE", 16);
           display.setFont();
           display.setTextSize(1);
-          showCenteredText("SPEED LOCKED", 25);
+          showCenteredText("SPEED LOCKED", 28);
           display.display();
           return;
       } else {
@@ -155,7 +154,11 @@ inline void updateOLED() {
           display.setFont(); display.setTextSize(1); display.setCursor(88, 25); display.print("CRUISE");
       } else {
           display.printf("%02d:%02d", dt.hour(), dt.minute());
-          display.setFont(); display.setTextSize(1); display.setCursor(88, 25); if (bleEnabled) display.print("BLE ON"); else display.printf("%04d", dt.year());
+          display.setFont(); display.setTextSize(1); display.setCursor(88, 25); 
+          
+          // PENYEMPURNAAN KOMUNITAS: MODE BADGE PERMANEN PADA HALAMAN UTAMA (PAGE 1)
+          // Menjamin pengendara selalu tahu status mode/rem saat mode popup dinonaktifkan
+          display.print(currentMode); 
       }
       display.setFont(); display.setTextSize(1); display.setCursor(88, 5);  display.print(DAY_NAMES[dt.dayOfTheWeek()]); display.setCursor(88, 15); display.printf("%d %s", dt.day(), MONTH_NAMES[dt.month() - 1]);
       break;
